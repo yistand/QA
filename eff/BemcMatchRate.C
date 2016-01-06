@@ -30,13 +30,13 @@ void BemcMatchRate() {
 	int ptbins = 100; 
 	int Ntrkmax = 100;
 
-	const int NoZdc = 11;
-	int ZdcCut[NoZdc+2] = {0,1000,2000,3000,4000,5000,6000,7000,8000,10000,50000};
+	const int NoZdc = 10;
+	int ZdcCut[NoZdc+1] = {0,1000,2000,3000,4000,5000,6000,7000,8000,10000,50000};
 	TH1D *htpc[NoZdc];
 	TH1D *hemc[NoZdc];
 	for(int i = 0; i<NoZdc; i++) {
 		htpc[i] = new TH1D(Form("htpc%d",i), Form("Number of TPC tracks vs pt for %d<zdc<%d",ZdcCut[i],ZdcCut[i+1]),ptbins,ptmin,ptmax);
-		hemc[i] = new TH1D(Form("hemc%d",i), Form("Number of TOF tracks vs pt for %d<zdc<%d",ZdcCut[i],ZdcCut[i+1]),ptbins,ptmin,ptmax);
+		hemc[i] = new TH1D(Form("hemc%d",i), Form("Number of BEMC tracks vs pt for %d<zdc<%d",ZdcCut[i],ZdcCut[i+1]),ptbins,ptmin,ptmax);
 		htpc[i]->Sumw2();
 		hemc[i]->Sumw2();
 	}

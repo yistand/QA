@@ -59,6 +59,7 @@ void BemcMatchRate() {
 
 		int zdc = 0;
 		while(t->fEventHeader_fZdcCoincidenceRate>ZdcCut[zdc]) zdc++;
+		if(zdc>=NoZdc) zdc = NoZdc-1;
 
 		for(int j = 0; j<t->fPrimaryTracks_; j++) {
 

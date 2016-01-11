@@ -1,0 +1,558 @@
+//====================================================================================================
+//
+//	2016.01.08	Li Yi
+//	Variables Vs runid
+//
+//====================================================================================================
+
+
+#include <iostream>
+#include <fstream>
+#include <list>
+#include <algorithm>    // std::sort
+#include <vector>       // std::vector
+
+
+#include "TFile.h"
+#include "TROOT.h"
+#include "TSystem.h"
+#include "TTree.h"
+#include "TH1D.h"
+#include "TH2D.h"
+#include "TProfile.h"
+#include "TChain.h"
+#include "TLine.h"
+#include "TCanvas.h"
+#include "TClonesArray.h"
+
+#include "/home/fas/caines/ly247/Software/PicoCode/eventStructuredAu/TStarJetPicoEvent.h"
+#include "/home/fas/caines/ly247/Software/PicoCode/eventStructuredAu/TStarJetPicoEventCuts.h"
+#include "/home/fas/caines/ly247/Software/PicoCode/eventStructuredAu/TStarJetPicoTriggerInfo.h"
+#include "/home/fas/caines/ly247/Software/PicoCode/eventStructuredAu/TStarJetPicoTower.h"
+#include "/home/fas/caines/ly247/Software/PicoCode/eventStructuredAu/TStarJetPicoPrimaryTrack.h"
+
+using namespace std;
+
+void convertrunindex(const vector<int>&  runindex, TProfile *hp, TH1D* h)	{ 		// runid -> runindex
+	for(unsigned int ir = 0; ir<runindex.size(); ir++) {
+		h->SetBinContent(ir+1,hp->GetBinContent(runindex.at(ir)));
+		h->SetBinError(ir+1,hp->GetBinError(runindex.at(ir)));
+	}
+}
+
+bool AveSig(TH1D *h, double &ave, double &sigma) {		// average and sigma 
+	ave = 0;
+	sigma = 0;
+	if(!h || h->GetNbinsX()==0) {
+		cout<<"NULL input histogram in AveSig()"<<endl;
+		return false;
+	}
+	if(h->GetNbinsX()==1) {
+		ave = h->GetBinContent(1);
+		sigma = 0;
+		return false;
+	}
+	for(int i = 0; i<h->GetNbinsX(); i++) {
+		ave+=h->GetBinContent(i+1);
+	}
+	ave/=h->GetNbinsX();
+
+	for(int i = 0; i<h->GetNbinsX(); i++) {
+		sigma+=pow((h->GetBinContent(i+1)-ave),2);
+	}
+	sigma/=h->GetNbinsX()-1;
+	sigma=sqrt(sigma);
+		
+	return true;
+}	
+
+void BadRun(TH1D *h, TH1D *hmap, vector<int> & badlist, const char *tag_trig = "NPE25", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/", double sigmacut = 3 ) {			// abnormal (>sigmacut-sigma) runid for variable in h (vs run index) 
+	double ave = 0, sig = 0;
+	AveSig(h,ave,sig);
+	badlist.clear();
+	for(int i = 0; i<h->GetNbinsX(); i++) {
+		if(h->GetBinContent(i+1)>ave+sig*sigmacut || h->GetBinContent(i+1)<ave-sig*sigmacut) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+	}
+
+	TCanvas *c = new TCanvas(Form("c%s",h->GetName()),h->GetTitle());
+	h->SetMaximum(ave+sig*10);
+	h->SetMinimum(ave-sig*10);
+	h->Draw("pe");
+	double xmin = h->GetBinCenter(1);
+	double xmax = h->GetBinCenter(h->GetNbinsX()+1);
+	TLine *l = new TLine();
+	l->SetLineColor(2);
+	l->SetLineStyle(2);
+	l->DrawLine(xmin,ave,xmax,ave);
+	l->SetLineStyle(1);
+	l->DrawLine(xmin,ave+sigmacut*sig,xmax,ave+sigmacut*sig);
+	l->DrawLine(xmin,ave-sigmacut*sig,xmax,ave-sigmacut*sig);
+
+	c->SaveAs(Form("%sQA_%s_%s.png",dir,h->GetName(),tag_trig));
+}
+
+
+void BadRun(TH1D *h, TH1D *hmap, list<int> & badlist, const char *tag_trig = "NPE25", const char *dir = "$HOME/scratch/mapBEMCauau11Pico/", double sigmacut = 3 ) {			// abnormal (>sigmacut-sigma) runid for variable in h (vs run index) 
+	double ave = 0, sig = 0;
+	AveSig(h,ave,sig);
+	badlist.clear();
+	for(int i = 0; i<h->GetNbinsX(); i++) {
+		if(h->GetBinContent(i+1)>ave+sig*sigmacut || h->GetBinContent(i+1)<ave-sig*sigmacut) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+	}
+
+	TCanvas *c = new TCanvas(Form("c%s",h->GetName()),h->GetTitle());
+	h->SetMaximum(ave+sig*10);
+	h->SetMinimum(ave-sig*10);
+	h->Draw("pe");
+	double xmin = h->GetBinCenter(1);
+	double xmax = h->GetBinCenter(h->GetNbinsX()+1);
+	TLine *l = new TLine();
+	l->SetLineColor(2);
+	l->SetLineStyle(2);
+	l->DrawLine(xmin,ave,xmax,ave);
+	l->SetLineStyle(1);
+	l->DrawLine(xmin,ave+sigmacut*sig,xmax,ave+sigmacut*sig);
+	l->DrawLine(xmin,ave-sigmacut*sig,xmax,ave-sigmacut*sig);
+
+	c->SaveAs(Form("%sQA_%s_%s.png",dir,h->GetName(),tag_trig));
+}
+
+void MergeBadRunList(vector<int>& a, const vector<int>& b) {		// merge b into a in order, assume both a and b is in ascending order 
+	std::vector<int>::iterator ia;
+	std::vector<int>::const_iterator ib;
+	for(ib = b.begin(); ib!=b.end(); ib++) {
+		for(ia = a.begin(); ia!=a.end(); ia++) {
+			if( *ib>*ia ) continue;
+			if( *ib==*ia ) break;
+			if( *ib<*ia ) {
+				ia=a.insert(ia,*ib);
+			}
+		}
+	}
+	
+}
+
+
+//void MergeBadRunList(list<int>& a, const list<int>& b) {		// merge b into a in order, assume both a and b is in ascending order , b will keep the same
+//	std::list<int>::iterator ia;
+//	std::list<int>::const_iterator ib;
+//	for(ib = b.begin(); ib!=b.end(); ib++) {
+//		for(ia = a.begin(); ia!=a.end(); ia++) {
+//			if( *ib>*ia ) continue;
+//			if( *ib==*ia ) break;
+//			if( *ib<*ia ) {
+//				ia=a.insert(ia,*ib);
+//			}
+//		}
+//	}
+//	
+//}
+
+
+void MergeBadRunList(list<int>& a, list<int>& b) {		// merge b into a in order, assume both a and b is in ascending order , b will be empty
+	a.merge(b);	
+	a.unique();
+}
+
+
+
+//==============================================================
+//================== Main Function =============================
+//==============================================================
+//void TimeDep(TString fin="/home/ly247/code/BEMCHTFinder/AuAu200Run11NPE18Central.list") {
+void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
+//void TimeDep(int fileid = 0) {
+//	gSystem->Load("libPhysics");		// needed to TLorentVector
+//	gSystem->Load("libHist");		// needed to TLorentVector
+//	gSystem->Load("~/Software/PicoCode/eventStructuredAu/libTStarJetPico.so");
+
+//	TString fin="/home/hep/caines/ly247/BEMCHTFinder/AuAu200Run11NPE15.list";  // This is a text file with a list of PicoDst Files, one file per line
+//	TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum";
+//	fin+=fileid;
+//	fin+=".root";
+	TChain *J=new TChain("JetTree");
+	TString cName="";
+
+	// Following load root files
+	int fcount = 0;
+	if (fin.Contains("root")){
+		cName=fin;
+		cout<<"Add "<<cName<<endl;	
+		J->Add(cName);
+		fcount++;
+	}
+	else{
+		if(fin.Contains(".txt")||fin.Contains(".list")){
+			std::ifstream in(fin);
+			std::string str;
+			while (std::getline(in,str))
+			{
+				cout<<str<<endl;
+				TString* strin=new TString(str);
+				const char *name;
+				name=strin->Data();
+				cName=name;
+				J->Add(strin->Data()); fcount++;
+				//if(fcount>100) break;	// test
+			}
+		}
+		else{
+			cName=fin;
+			cName +="pico*.root";
+			J->Add(cName);
+			fcount++;
+		}
+		cout<<"read in "<<fcount<<" files"<<endl;
+	}
+
+	// Creat output root file and histogram
+	// NPE-15
+	//TFile *fout = new TFile(Form("$HOME/scratch/mapBEMCauau11Pico/BEMCTowerHits_NPE15.root"),"RECREATE");
+	//char datadescription[100] = "NPE15 Run11 AuAu 200 GeV";
+	//int startrun = 12126079;
+	//int endrun = 12171016;
+	
+	// NPE-25, NPE-18
+	const char *tag_trig="MB";   // "NPE25";
+	const char *outdir="/home/fas/caines/ly247/scratch/run12ppQA/out/";
+	char datadescription[100];sprintf(datadescription, "%s Run12 pp 200 GeV",tag_trig);
+	int startrun = 13039166;
+	int endrun = 13104049;
+	int runrange = endrun-startrun+1;
+
+	// per run
+	TH1D *hrunid4Run = new TH1D("hrunid4Run",Form("runid vs runid (to filter out void runid) %s",datadescription),runrange,startrun,endrun);
+	TProfile *hrefmult4Run = new TProfile("hrefmult4Run",Form("refmult vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hvx4Run = new TProfile("hvx4Run",Form("vx vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hvy4Run = new TProfile("hvy4Run",Form("vy vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hvz4Run = new TProfile("hvz4Run",Form("vz vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hNPVertex4Run = new TProfile("hNPVertex4Run",Form("NumberOfPrimaryVertices vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hratioP2G4Run = new TProfile("hratioP2G4Run",Form("NumberOfPrimaryTrack/GlobalTrack vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hratioTrackMatch4Run = new TProfile("hratioTrackMatch4Run",Form("NOfMatchedTracks/NOfPTracks vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hzdccoinrate4Run = new TProfile("hzdccoinrate4Run",Form("ZDC coincidence Rate vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hbbccoinrate4Run = new TProfile("hbbccoinrate4Run",Form("BBC coincidence Rate vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hbemcNOfTower4Run = new TProfile("hbemcNOfTower4Run",Form("BEMC Number Of Towers vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hbemcratioNOfTowerMatch4Run = new TProfile("hbemcratioNOfTowerMatch4Run",Form("BEMC Number Of Matched Towers/Number Of Towers vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hbemcadcsum4Run = new TProfile("hbemcadcsum4Run",Form("BBEMC ADC sum vs runid %s",datadescription),runrange,startrun,endrun);
+
+	TProfile *hgoodtrk4Run = new TProfile("hgoodtrk4Run",Form("goodtrk vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hgoodtrkbemcmatch4Run = new TProfile("hgoodtrkbemcmatch4Run",Form("goodtrkbemcmatch vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hgoodtrktofmatch4Run = new TProfile("hgoodtrktofmatch4Run",Form("goodtrktofmatch vs runid %s",datadescription),runrange,startrun,endrun);
+
+	TProfile *hdca4Run = new TProfile("hdca4Run",Form("dca vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hpt4Run = new TProfile("hpt4Run",Form("pt vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hEt4Run = new TProfile("hEt4Run",Form("Et vs runid %s",datadescription),runrange,startrun,endrun);
+	
+	// all run
+	TH1D *hvz = new TH1D("hvz",Form("Vz for all run %s",datadescription),10000,-100,100);
+	TH2D *hvxy = new TH2D("hvxy",Form("Vx - Vy for all run %s",datadescription),1000,-4,4,1000,-4,4);
+	TH1D *hbemc = new TH1D("hbemc",Form("BEMC Tower ADC for all run %s",datadescription),4800,1,4801);
+	TH2D *hbemc2d = new TH2D("hbemc2d",Form("BEMC Tower ADC for all run %s",datadescription),4800,1,4801,1000,0,4096);	// 2^12, ADC 12 bits
+	TH2D *hbemc2d_trig = new TH2D("hbemc2d_trig",Form("Triggered BEMC Tower ADC for all run %s",datadescription),4800,1,4801,1000,0,4096);	// hbemc2d for trig id tower only 
+
+	//TH2D *hbemc4Run = new TH2D("hbemc4Run",Form("bemc vs runid %s",datadescription),runrange,startrun,endrun,10000,-100,100);
+
+
+	//  Read in Tree
+	TStarJetPicoEvent *mEv = new TStarJetPicoEvent();
+	J->SetBranchAddress("PicoJetTree",&mEv);
+
+	TStarJetPicoEventCuts *EvCut = new TStarJetPicoEventCuts();
+	EvCut->SetTriggerSelection("ppMB");
+
+	Int_t ievents = J->GetEntries();
+
+	cout<<"---> Number of events = "<<ievents<<endl;
+
+	// Loop over all events
+	for (Int_t i=0; i<ievents; i++){
+		//for (Int_t i=0; i<10; i++){
+		if( i%10000 == 0){
+			cout << "On event " << i << endl;
+		}
+		//if( i>2 ) break; 	// test
+		J->GetEvent(i);
+
+		// Event trigcut
+		if(!EvCut->IsTriggerIdOK(mEv)) continue;
+
+
+		// Event information
+		int runid = mEv->GetHeader()->GetRunId();
+		hvz->Fill(mEv->GetHeader()->GetPrimaryVertexZ());
+		hvxy->Fill(mEv->GetHeader()->GetPrimaryVertexX(),mEv->GetHeader()->GetPrimaryVertexY());
+
+		hrunid4Run->Fill(runid);
+		hrefmult4Run->Fill(runid,mEv->GetHeader()->GetReferenceMultiplicity());
+		hvx4Run->Fill(runid,mEv->GetHeader()->GetPrimaryVertexX());
+		hvy4Run->Fill(runid,mEv->GetHeader()->GetPrimaryVertexY());
+		hvz4Run->Fill(runid,mEv->GetHeader()->GetPrimaryVertexZ());
+		hNPVertex4Run->Fill(runid,mEv->GetHeader()->GetNumberOfVertices());
+		hratioP2G4Run->Fill(runid,(mEv->GetHeader()->GetNGlobalTracks()==0)?0:(1.*mEv->GetHeader()->GetNOfPrimaryTracks()/mEv->GetHeader()->GetNGlobalTracks()));
+		hratioTrackMatch4Run->Fill(runid,(mEv->GetHeader()->GetNOfPrimaryTracks()==0)?0:(1.*mEv->GetHeader()->GetNOfMatchedTracks()/mEv->GetHeader()->GetNOfPrimaryTracks()));
+		hzdccoinrate4Run->Fill(runid,mEv->GetHeader()->GetZdcCoincidenceRate());
+		hbbccoinrate4Run->Fill(runid,mEv->GetHeader()->GetBbcCoincidenceRate());
+		hbemcNOfTower4Run->Fill(runid,mEv->GetHeader()->GetNOfTowers());
+		hbemcratioNOfTowerMatch4Run->Fill(runid,(mEv->GetHeader()->GetNOfTowers()==0)?0:1.*mEv->GetHeader()->GetNOfMatchedTowers()/mEv->GetHeader()->GetNOfTowers());
+		
+
+		// Get the Tower trigger the HT event
+		for(int itrg = 0; itrg<mEv->GetHeader()->GetNOfTrigObjs(); itrg ++) {
+			hbemc2d_trig->Fill(mEv->GetTrigObj(itrg)->GetADC(),mEv->GetTrigObj(itrg)->GetId());
+		}
+
+
+		// Read BEMC Tower
+		for (Int_t itwr=0; itwr<mEv->GetHeader()->GetNOfTowers() ; itwr++) {
+			TStarJetPicoTower *mTwr = mEv->GetTower(itwr);
+			hbemc->Fill(mTwr->GetId(),mTwr->GetEnergy());
+			hbemc2d->Fill(mTwr->GetId(),mTwr->GetEnergy());
+			//cout<<"tower "<<itwr<<"\t"<<mTwr->GetId()<<"\t"<<mTwr->GetADC()<<endl; // test
+			hbemcadcsum4Run->Fill(runid,mTwr->GetEnergy());
+			hEt4Run->Fill(runid,mTwr->GetEnergy());
+		}
+
+		// Primary track loop
+		int goodtrk = 0;
+		int goodtrktofmatch = 0;
+		int goodtrkbemcmatch = 0;
+		int flagEvt = 0;
+		if(fabs(mEv->GetHeader()->GetPrimaryVertexZ())<=5 && fabs(mEv->GetHeader()->GetPrimaryVertexZ()-mEv->GetHeader()->GetVpdVz())<=3 && mEv->GetHeader()->GetPrimaryVertexRanking()>0) flagEvt = 1;		// good
+
+		for (Int_t itrk=0; itrk<mEv->GetHeader()->GetNOfPrimaryTracks(); itrk++) {
+			TStarJetPicoPrimaryTrack *mTrk = mEv->GetPrimaryTrack(itrk); 
+			double dca = mTrk->GetDCA();
+			double px = mTrk->GetPx();
+			double py = mTrk->GetPy();
+			double pz = mTrk->GetPz();
+			double pt = sqrt(px*px+py*py+pz*pz);
+			
+			hdca4Run->Fill(runid,dca);
+			hpt4Run->Fill(runid,pt);
+
+			if(flagEvt>0) {
+				if(mTrk->GetFlag()<=0) continue;
+				if(fabs(mTrk->GetEta())>0.5) continue;
+				if(pt<0.15&&pt>10) continue;
+				if(dca>1) continue;
+				float nfit = mTrk->GetNOfFittedHits();
+				float nposs = mTrk->GetNOfPossHits();
+				if(nfit<25) continue;
+				if(1.0*nfit/nposs<0.52) continue;
+				if(1.0*nfit/nposs>1.02) continue;
+
+				goodtrk++;
+				if(mTrk->GetBemcMatchFlag()) goodtrkbemcmatch++;
+				if(mTrk->GetTofMatchFlag()) goodtrktofmatch++;
+
+			}
+			hgoodtrk4Run->Fill(runid,goodtrk);
+			hgoodtrkbemcmatch4Run->Fill(runid,goodtrkbemcmatch);
+			hgoodtrktofmatch4Run->Fill(runid,goodtrktofmatch);
+		}
+
+	}// End of Evt Loop
+
+// Convert run number into runindex array, so that we don't have gap from not used runnumber in the histogram x
+	vector<int> runindex;
+	for(int ir = 0; ir<runrange; ir++) {
+		if(hrunid4Run->GetBinContent(ir+1)>0) {		// valid runnumber
+			runindex.push_back(ir+1);
+		}
+	}
+	int runindexsize = runindex.size();
+	TH1D *hmaprunindex2runid = new TH1D("hmaprunindex2runid","Map runindex to runid",runindexsize,0,runindexsize);
+	for(int idx=0;idx<runindexsize; idx++) {
+		hmaprunindex2runid->SetBinContent(idx+1,runindex.at(idx));
+	}
+	// per run rearranged as runindex (0...number of runs) to avoid the gap from the run number not in use
+	TH1D *hrefmult4runindex = new TH1D("hrefmult4runindex",Form("refmult vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hvx4runindex = new TH1D("hvx4runindex",Form("vx vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hvy4runindex = new TH1D("hvy4runindex",Form("vy vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hvz4runindex = new TH1D("hvz4runindex",Form("vz vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hNPVertex4runindex = new TH1D("hNPVertex4runindex",Form("NumberOfPrimaryVertices vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hratioP2G4runindex = new TH1D("hratioP2G4runindex",Form("NumberOfPrimaryTrack/GlobalTrack vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hratioTrackMatch4runindex = new TH1D("hratioTrackMatch4runindex",Form("NOfMatchedTracks/NOfPTracks vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hzdccoinrate4runindex = new TH1D("hzdccoinrate4runindex",Form("ZDC coincidence Rate vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hbbccoinrate4runindex = new TH1D("hbbccoinrate4runindex",Form("BBC coincidence Rate vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hbemcNOfTower4runindex = new TH1D("hbemcNOfTower4runindex",Form("BEMC Number Of Towers vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hbemcratioNOfTowerMatch4runindex = new TH1D("hbemcratioNOfTowerMatch4runindex",Form("BEMC Number Of Matched Towers/Number Of Towers vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hbemcadcsum4runindex = new TH1D("hbemcadcsum4runindex",Form("BBEMC ADC sum vs runid %s",datadescription),runindexsize,0,runindexsize);
+	
+	TH1D *hgoodtrk4runindex = new TH1D("hgoodtrk4runindex",Form("goodtrk vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hgoodtrkbemcmatch4runindex = new TH1D("hgoodtrkbemcmatch4runindex",Form("goodtrkbemcmatch vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hgoodtrktofmatch4runindex = new TH1D("hgoodtrktofmatch4runindex",Form("goodtrktofmatch vs runid %s",datadescription),runindexsize,0,runindexsize);
+
+	TH1D *hdca4runindex = new TH1D("hdca4runindex",Form("dca vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hpt4runindex = new TH1D("hpt4runindex",Form("pt vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TH1D *hEt4runindex = new TH1D("hEt4runindex",Form("Et vs runid %s",datadescription),runindexsize,0,runindexsize);
+
+	convertrunindex(runindex,hrefmult4Run,hrefmult4runindex);
+	convertrunindex(runindex,hvx4Run,hvx4runindex);
+	convertrunindex(runindex,hvy4Run,hvy4runindex);
+	convertrunindex(runindex,hvz4Run,hvz4runindex);
+	convertrunindex(runindex,hNPVertex4Run,hNPVertex4runindex);
+	convertrunindex(runindex,hratioP2G4Run,hratioP2G4runindex);
+	convertrunindex(runindex,hratioTrackMatch4Run,hratioTrackMatch4runindex);
+	convertrunindex(runindex,hzdccoinrate4Run,hzdccoinrate4runindex);
+	convertrunindex(runindex,hbbccoinrate4Run,hbbccoinrate4runindex);
+	convertrunindex(runindex,hbemcNOfTower4Run,hbemcNOfTower4runindex);
+	convertrunindex(runindex,hbemcratioNOfTowerMatch4Run,hbemcratioNOfTowerMatch4runindex);
+	convertrunindex(runindex,hbemcadcsum4Run,hbemcadcsum4runindex);
+
+	convertrunindex(runindex,hgoodtrk4Run,hgoodtrk4runindex);
+	convertrunindex(runindex,hgoodtrkbemcmatch4Run,hgoodtrkbemcmatch4runindex);
+	convertrunindex(runindex,hgoodtrktofmatch4Run,hgoodtrktofmatch4runindex);
+
+	convertrunindex(runindex,hdca4Run,hdca4runindex);
+	convertrunindex(runindex,hpt4Run,hpt4runindex);
+	convertrunindex(runindex,hEt4Run,hEt4runindex);
+
+// Write out hot tower id into txt file
+	ofstream ftxt;
+	ftxt.open(Form("list4BEMCTowerHits_%s.txt",tag_trig));
+
+	double bemcave=0;
+	for(int i = 1; i<=4800; i++) {
+		bemcave+=hbemc->GetBinContent(i);	
+	}
+	bemcave/=4800;
+	double bemcsigma=0;
+	for(int i = 1; i<=4800; i++) {
+		bemcsigma+=pow((hbemc->GetBinContent(i)-bemcave),2);
+	}
+	bemcsigma/=4800-1;
+	bemcsigma=sqrt(bemcsigma);
+	double times=3;			// times-bemcsigma deviation
+	//double ratio = 0.2;		// +- ratio in the good tower range
+	cout<<"Hot Tower Id: "<<endl;
+	for(int i = 1; i<=4800; i++) {
+		//if(hbemc->GetBinContent(i)>bemcave*(1+ratio)) {
+		if(hbemc->GetBinContent(i)>bemcave+times*bemcsigma) {
+			cout<<i<<endl;
+			ftxt<<i<<endl;	
+		}
+	}
+	cout<<endl;
+	ftxt.close();
+
+// Draw bemc
+	TCanvas *c = new TCanvas();
+	hbemc2d->Draw("col");
+	c->SetLogz();
+	TLine *l = new TLine();
+	l->SetLineColor(2);
+	l->SetLineStyle(2);
+	//l->DrawLine(1,ave*(1+ratio),4801,ave*(1+ratio));
+	//l->DrawLine(1,bemcave*(1-ratio),4801,bemcave*(1-ratio));
+	l->DrawLine(1,bemcave+times*bemcsigma,4801,bemcave+times*bemcsigma);
+	l->DrawLine(1,bemcave-times*bemcsigma,4801,bemcave-times*bemcsigma);
+	c->SaveAs(Form("%sQA_%s_%s.png",outdir,"bemc2d",tag_trig));
+
+	c->Clear();
+	hbemc2d_trig->Draw("col");
+	c->SaveAs(Form("%sQA_%s_%s.png",outdir,"bemc2d_trg",tag_trig));
+
+	c->Clear();
+	TH2D *hbemc2d_notrig = (TH2D*)hbemc2d->Clone("hbemc2d_notrig");
+	hbemc2d_notrig->Add(hbemc2d_trig,-1);
+	hbemc2d_notrig->SetTitle(Form("Non-triggered BEMC Tower ADC for all run %s",datadescription));
+	hbemc2d_notrig->Draw("col");
+	l->DrawLine(1,bemcave+times*bemcsigma,4801,bemcave+times*bemcsigma);
+	l->DrawLine(1,bemcave-times*bemcsigma,4801,bemcave-times*bemcsigma);
+	c->SaveAs(Form("%sQA_%s_%s.png",outdir,"bemc2d_nontrg",tag_trig));
+	
+	
+// Search for abnormal run
+	//vector<int> refmultlist, vxlist, vylist, vzlist, ratioP2Glist, ratioTrackMatchlist, bemcratioNOfTowerMatchlist; 
+	list<int> refmultlist, vxlist, vylist, vzlist, ratioP2Glist, ratioTrackMatchlist, bemcratioNOfTowerMatchlist; 
+	BadRun(hrefmult4runindex,hmaprunindex2runid,refmultlist,tag_trig,outdir);
+	BadRun(hvx4runindex,hmaprunindex2runid,vxlist,tag_trig,outdir);
+	BadRun(hvy4runindex,hmaprunindex2runid,vylist,tag_trig,outdir);
+	BadRun(hvz4runindex,hmaprunindex2runid,vzlist,tag_trig,outdir);
+	BadRun(hratioP2G4runindex,hmaprunindex2runid,ratioP2Glist,tag_trig,outdir);
+	BadRun(hratioTrackMatch4runindex,hmaprunindex2runid,ratioTrackMatchlist,tag_trig,outdir);
+	BadRun(hbemcratioNOfTowerMatch4runindex,hmaprunindex2runid,bemcratioNOfTowerMatchlist,tag_trig,outdir);
+// Merge bad run list from all variables
+	//vector<int> badrunlist;
+	list<int> badrunlist;
+	MergeBadRunList(badrunlist,refmultlist);
+	MergeBadRunList(badrunlist,vxlist);
+	MergeBadRunList(badrunlist,vylist);
+	MergeBadRunList(badrunlist,vzlist);
+	MergeBadRunList(badrunlist,ratioP2Glist);
+	MergeBadRunList(badrunlist,ratioTrackMatchlist);
+	MergeBadRunList(badrunlist,bemcratioNOfTowerMatchlist);
+	
+	cout<<endl<<"Potential bad run list: "<<endl;
+	list<int>::iterator ilist;
+	for(ilist = badrunlist.begin(); ilist!=badrunlist.end(); ilist++) {
+		cout<<*ilist<<endl;
+	}
+	cout<<endl;
+
+
+// Write histograms into root file
+	//TFile *fout = new TFile(Form("%s%s_%d.root",outdir,tag_trig,fileid),"RECREATE");
+	TFile *fout = new TFile(Form("%s%s.root",outdir,tag_trig),"RECREATE");
+	fout->cd();
+	hmaprunindex2runid->Write();
+	hvz->Write();
+	hvxy->Write();
+	hbemc->Write();
+	hbemc2d->Write();
+	hbemc2d_trig->Write();
+	hrefmult4Run->Write();
+	hvx4Run->Write();
+	hvy4Run->Write();
+	hvz4Run->Write();
+	hNPVertex4Run->Write();
+	hratioP2G4Run->Write();
+	hratioTrackMatch4Run->Write();
+	hzdccoinrate4Run->Write();
+	hbbccoinrate4Run->Write();
+	hbemcNOfTower4Run->Write();
+	hbemcratioNOfTowerMatch4Run->Write();
+	hbemcadcsum4Run->Write();
+
+	hgoodtrk4Run->Write();
+	hgoodtrkbemcmatch4Run->Write();
+	hgoodtrktofmatch4Run->Write();
+
+	hdca4Run->Write();
+	hpt4Run->Write();
+	hEt4Run->Write();	
+
+	hrefmult4runindex->Write();
+	hvx4runindex->Write();
+	hvy4runindex->Write();
+	hvz4runindex->Write();
+	hNPVertex4runindex->Write();
+	hratioP2G4runindex->Write();
+	hratioTrackMatch4runindex->Write();
+	hzdccoinrate4runindex->Write();
+	hbbccoinrate4runindex->Write();
+	hbemcNOfTower4runindex->Write();
+	hbemcratioNOfTowerMatch4runindex->Write();
+	hbemcadcsum4runindex->Write();
+
+	hgoodtrk4runindex->Write();
+	hgoodtrkbemcmatch4runindex->Write();
+	hgoodtrktofmatch4runindex->Write();
+
+	hdca4runindex->Write();
+	hpt4runindex->Write();
+	hEt4runindex->Write();	
+
+
+	fout->Close();
+
+}
+
+
+
+

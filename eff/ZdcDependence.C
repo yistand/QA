@@ -116,7 +116,7 @@ void ZdcDependence() {
 
 	}
 
-	TFile *fout = new TFile("ppTracksVsZdc_0.root","recreate");
+	TFile *fout = new TFile("ppTracksVsZdc.root","recreate");
 	hrefmult->Write();
 	hglobal->Write();
 	hprimary->Write();

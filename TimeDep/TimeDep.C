@@ -530,8 +530,8 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TS
 	const char *outdir="/home/fas/caines/ly247/scratch/run12ppQA/out/";
 	char datadescription[100];sprintf(datadescription, "%s Run12 pp 200 GeV",tag_trig);
 	int startrun = 13039166;
-	int endrun = 13104049;
-	int runrange = endrun-startrun+1;
+	int endrun = 13104049+1;		// make sure all possible run included
+	int runrange = endrun-startrun;		// how many histogram bins
 
 	// per run
 	TH1D *hrunid4Run = new TH1D("hrunid4Run",Form("runid vs runid (to filter out void runid) %s",datadescription),runrange,startrun,endrun);
@@ -816,6 +816,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TS
 	//TFile *fout = new TFile(Form("%s%s_%d.root",outdir,tag_trig,fileid),"RECREATE");
 	TFile *fout = new TFile(Form("%s%s.root",outdir,tag_trig),"RECREATE");
 	fout->cd();
+	hrunid4Run->Write();
 	hmaprunindex2runid->Write();
 	hvz->Write();
 	hvxy->Write();

@@ -238,7 +238,7 @@ void BadRun(TH1D *h, TH1D *hmap, vector<int> & badlist, const char *tag_trig = "
 	}
 
 	
-	cout<<"Bad run for "<<h->GetTitle()<<endl<<"runlist["<<badlist.size()<<"] = {";
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"badrunlist["<<badlist.size()<<"] = {";
 	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
 		cout<<*it<<", ";
 	}	
@@ -308,7 +308,7 @@ void BadRun(TH1D *h, TH1D *hmap, list<int> & badlist, const char *tag_trig = "NP
 	}
 
 	
-	cout<<"Bad run for "<<h->GetTitle()<<endl<<"runlist["<<badlist.size()<<"] = {";
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"badrunlist["<<badlist.size()<<"] = {";
 	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
 		cout<<*it<<", ";
 	}	
@@ -377,7 +377,7 @@ void BadRun(TProfile *h, TH1D *hmap, list<int> & badlist, const char *tag_trig =
 		}
 	}
 	
-	cout<<"Bad run for "<<h->GetTitle()<<endl<<"runlist["<<badlist.size()<<"] = {";
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"badrunlist["<<badlist.size()<<"] = {";
 	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
 		cout<<*it<<", ";
 	}	

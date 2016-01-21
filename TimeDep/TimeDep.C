@@ -11,6 +11,7 @@
 #include <list>
 #include <algorithm>    // std::sort
 #include <vector>       // std::vector
+#include <iomanip>	// std::setprecision
 
 
 #include "TFile.h"
@@ -236,10 +237,27 @@ void BadRun(TH1D *h, TH1D *hmap, vector<int> & badlist, const char *tag_trig = "
 		}
 	}
 
+	
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"runlist["<<badlist.size()<<"] = {";
+	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
+		cout<<*it<<", ";
+	}	
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<"};"<<endl;
+
 	TCanvas *c = new TCanvas(Form("c%s",h->GetName()),h->GetTitle());
-	h->SetMaximum(ave+sig*10);
-	h->SetMinimum(ave-sig*10);
-	h->Draw("pe");
+	gStyle->SetOptStat(0);
+	//h->SetMaximum(ave+sig*10);
+	//h->SetMinimum(ave-sig*10);
+	//h->Draw("pe");
+	TH1D *htemp = (TH1D*)hrunid(h,hmap);
+	htemp->SetMarkerStyle(h->GetMarkerStyle());
+	htemp->SetMarkerColor(h->GetMarkerColor());
+	htemp->SetLineStyle(h->GetLineStyle());
+	htemp->SetLineColor(h->GetLineColor());
+	htemp->Draw("p");
+	h->Draw("pesame");
 	double xmin = h->GetBinCenter(1);
 	double xmax = h->GetBinCenter(h->GetNbinsX()+1);
 	TLine *l = new TLine();
@@ -289,10 +307,27 @@ void BadRun(TH1D *h, TH1D *hmap, list<int> & badlist, const char *tag_trig = "NP
 		}
 	}
 
+	
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"runlist["<<badlist.size()<<"] = {";
+	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
+		cout<<*it<<", ";
+	}	
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<"};"<<endl;
+
 	TCanvas *c = new TCanvas(Form("c%s",h->GetName()),h->GetTitle());
-	h->SetMaximum(ave+sig*10);
-	h->SetMinimum(ave-sig*10);
-	h->Draw("pe");
+	gStyle->SetOptStat(0);
+	//h->SetMaximum(ave+sig*10);
+	//h->SetMinimum(ave-sig*10);
+	//h->Draw("pe");
+	TH1D *htemp = (TH1D*)hrunid(h,hmap);
+	htemp->SetMarkerStyle(h->GetMarkerStyle());
+	htemp->SetMarkerColor(h->GetMarkerColor());
+	htemp->SetLineStyle(h->GetLineStyle());
+	htemp->SetLineColor(h->GetLineColor());
+	htemp->Draw("p");
+	h->Draw("pesame");
 	double xmin = h->GetBinCenter(1);
 	double xmax = h->GetBinCenter(h->GetNbinsX()+1);
 	TLine *l = new TLine();
@@ -341,11 +376,28 @@ void BadRun(TProfile *h, TH1D *hmap, list<int> & badlist, const char *tag_trig =
 			badlist.push_back(hmap->GetBinContent(i+1));
 		}
 	}
+	
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"runlist["<<badlist.size()<<"] = {";
+	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
+		cout<<*it<<", ";
+	}	
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<"};"<<endl;
 
 	TCanvas *c = new TCanvas(Form("c%s",h->GetName()),h->GetTitle());
-	h->SetMaximum(ave+sig*10);
-	h->SetMinimum(ave-sig*10);
-	h->Draw("pe");
+	gStyle->SetOptStat(0);
+	//h->SetMaximum(ave+sig*10);
+	//h->SetMinimum(ave-sig*10);
+	//h->Draw("pe");
+	h->SetMarkerStyle(4);
+	TH1D *htemp = (TH1D*)hrunid(h,hmap);
+	htemp->SetMarkerStyle(h->GetMarkerStyle());
+	htemp->SetMarkerColor(h->GetMarkerColor());
+	htemp->SetLineStyle(h->GetLineStyle());
+	htemp->SetLineColor(h->GetLineColor());
+	htemp->Draw("p");
+	h->Draw("pesame");
 	double xmin = h->GetBinCenter(1);
 	double xmax = h->GetBinCenter(h->GetNbinsX()+1);
 	TLine *l = new TLine();
@@ -400,7 +452,38 @@ void MergeBadRunList(list<int>& a, list<int>& b) {		// merge b into a in order, 
 	a.unique();
 }
 
-TH1D *hrunid(TProfile *h, TCanvas *c, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/") {
+TH1D *hrunid(TProfile *h, TH1D *hmap) {	// h is the one vs runindex, not the real run number
+        string name = h->GetName();
+        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
+        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
+        hout->GetXaxis()->SetTitle(Form("day"));
+        hout->SetMarkerStyle(4);
+	int currentday = 0;
+	int year = floor(hmap->GetBinContent(1)/1000000);
+	//cout<<"year 20"<<year-1<<endl;
+        for(int i = 0; i<h->GetNbinsX(); i++) {
+                hout->SetBinContent(i+1,h->GetBinContent(i+1));
+                double runnumber = hmap->GetBinContent(i+1);
+                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
+                        char day[3];
+                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
+			//cout<<day<<endl;
+                        hout->GetXaxis()->SetBinLabel(i+1,day);
+                        hout->LabelsOption("hd");
+			currentday= floor(runnumber/1000)-year*1000;
+                }
+        }
+        double ave = 0, sig = 0;
+        AveSig(hout,ave,sig);
+        hout->SetMaximum(ave+10*sig);
+        hout->SetMinimum(ave-10*sig);
+
+        return hout;
+}
+
+
+
+TH1D *hrunid(TProfile *h, TH1D *hmap, TCanvas *c, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/") {	// h is the one vs runindex, not the real run number
         c->SetLogy(0);
         gStyle->SetOptStat(0);
         string name = h->GetName();
@@ -408,14 +491,19 @@ TH1D *hrunid(TProfile *h, TCanvas *c, const char *tag_trig = "NPE25", TString ou
         hout->GetYaxis()->SetTitle(Form("%s",name.data()));
         hout->GetXaxis()->SetTitle(Form("runid"));
         hout->SetMarkerStyle(4);
+	int currentday = 0;
+	int year = floor(hmap->GetBinContent(1)/1000000);
+	//cout<<"year 20"<<year-1<<endl;
         for(int i = 0; i<h->GetNbinsX(); i++) {
                 hout->SetBinContent(i+1,h->GetBinContent(i+1));
-                double runnumber = h->GetBinLowEdge(i+1);
-                if((runnumber-floor(runnumber/1000)*1000)<1e-6) {
+                double runnumber = hmap->GetBinContent(i+1);
+                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
                         char day[3];
-                        sprintf(day,"%d",floor(h->GetBinLowEdge(i+1)/1000-12000));
+                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
+			//cout<<day<<endl;
                         hout->GetXaxis()->SetBinLabel(i+1,day);
                         hout->LabelsOption("hd");
+			currentday= floor(runnumber/1000)-year*1000;
                 }
         }
         double ave = 0, sig = 0;
@@ -423,8 +511,6 @@ TH1D *hrunid(TProfile *h, TCanvas *c, const char *tag_trig = "NPE25", TString ou
         hout->SetMaximum(ave+5*sig);
         hout->SetMinimum(ave-5*sig);
 
-        hout->SetMaximum(ave+5*sig);
-        hout->SetMinimum(ave-5*sig);
         hout->Draw("p");
 
 
@@ -440,21 +526,21 @@ TH1D *hrunid(TProfile *h, TCanvas *c, const char *tag_trig = "NPE25", TString ou
         lat->SetTextColor(kGreen);
         lat->SetTextFont(62);
         lat->SetTextSize(0.03);
-        xline = hout->GetBinCenter(h->FindBin(12138080.5));
-        l->DrawLine(xline,ymin,xline,ymax);     //add FTPC trigger
-        lat->DrawLatex(xline,ylat,"add FTPC trigger");
+        //xline = hout->GetBinCenter(h->FindBin(12138080.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add FTPC trigger
+        //lat->DrawLatex(xline,ylat,"add FTPC trigger");
 
-        xline = hout->GetBinCenter(h->FindBin(12140029.5));
-        l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian
-        lat->DrawLatex(xline,ylat,"add future_guadian");
+        //xline = hout->GetBinCenter(h->FindBin(12140029.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian
+        //lat->DrawLatex(xline,ylat,"add future_guadian");
 
-        xline = hout->GetBinCenter(h->FindBin(12144030.5));
-        l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian again
-        lat->DrawLatex(xline,ylat,"future_guadian again");
+        //xline = hout->GetBinCenter(h->FindBin(12144030.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian again
+        //lat->DrawLatex(xline,ylat,"future_guadian again");
 
-        xline = hout->GetBinCenter(h->FindBin(12145020.5));
-        l->DrawLine(xline,ymin,xline,ymax);     //add new trigger file
-        lat->DrawLatex(xline,ylat,"new trigger file");
+        //xline = hout->GetBinCenter(h->FindBin(12145020.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add new trigger file
+        //lat->DrawLatex(xline,ylat,"new trigger file");
 
 	c->SaveAs(Form("%sQA_%s_%s%s.png",dir,h->GetName(),tag_trig,outfiletag.Data()));
         return hout;
@@ -560,6 +646,11 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TS
 	// all run
 	TH1D *hvz = new TH1D("hvz",Form("Vz for all run %s",datadescription),10000,-100,100);
 	TH2D *hvxy = new TH2D("hvxy",Form("Vx - Vy for all run %s",datadescription),1000,-4,4,1000,-4,4);
+	TH1D *hzdc = new TH1D("hzdc",Form("Zdc Coin. Rate for all run %s",datadescription),1000,0,20000);
+	TH1D *hbbc = new TH1D("hbbc",Form("Bbc Coin. Rate for all run %s",datadescription),1000,0,1500000);
+	TH2D *hBbcVsZdc = new TH2D("hBbcVsZdc",Form("hBbcVsZdc  for all run %s",datadescription),500,0,20000,500,0,1500000);
+	TH2D *hNOfGlobalVsZdc = new TH2D("hNOfGlobalVsZdc",Form("hNOfGlobalVsZdc for all run %s",datadescription),500,0,20000,500,0,1500);
+	TH2D *hgoodtrktofmatchVsNOfGlobal = new TH2D("hgoodtrktofmatchVsNOfGlobal",Form("hgoodtrktofmatchVsNOfGlobal for all run %s",datadescription),500,0,1500,10,0,10);
 	TH1D *hbemc = new TH1D("hbemc",Form("BEMC Tower ADC for all run %s",datadescription),4800,1,4801);
 	TH2D *hbemc2d = new TH2D("hbemc2d",Form("BEMC Tower ADC for all run %s",datadescription),4800,1,4801,1000,0,4096);	// 2^12, ADC 12 bits
 	TH2D *hbemc2d_trig = new TH2D("hbemc2d_trig",Form("Triggered BEMC Tower ADC for all run %s",datadescription),4800,1,4801,1000,0,4096);	// hbemc2d for trig id tower only 
@@ -596,6 +687,10 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TS
 		int runid = mEv->GetHeader()->GetRunId();
 		hvz->Fill(mEv->GetHeader()->GetPrimaryVertexZ());
 		hvxy->Fill(mEv->GetHeader()->GetPrimaryVertexX(),mEv->GetHeader()->GetPrimaryVertexY());
+		hzdc->Fill(mEv->GetHeader()->GetZdcCoincidenceRate());
+		hBbcVsZdc->Fill(mEv->GetHeader()->GetZdcCoincidenceRate(),mEv->GetHeader()->GetBbcCoincidenceRate());
+		hNOfGlobalVsZdc->Fill(mEv->GetHeader()->GetZdcCoincidenceRate(),mEv->GetHeader()->GetNGlobalTracks());
+		hbbc->Fill(mEv->GetHeader()->GetBbcCoincidenceRate());
 
 		hrunid4Run->Fill(runid);
 		hrefmult4Run->Fill(runid,mEv->GetHeader()->GetReferenceMultiplicity());
@@ -665,6 +760,8 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TS
 			hgoodtrk4Run->Fill(runid,goodtrk);
 			hgoodtrkbemcmatch4Run->Fill(runid,goodtrkbemcmatch);
 			hgoodtrktofmatch4Run->Fill(runid,goodtrktofmatch);
+
+			hgoodtrktofmatchVsNOfGlobal->Fill(mEv->GetHeader()->GetNGlobalTracks(),goodtrktofmatch);
 		}
 
 	}// End of Evt Loop
@@ -820,6 +917,11 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TS
 	hmaprunindex2runid->Write();
 	hvz->Write();
 	hvxy->Write();
+	hzdc->Write();
+	hbbc->Write();
+	hBbcVsZdc->Write();
+	hNOfGlobalVsZdc->Write();
+	hgoodtrktofmatchVsNOfGlobal->Write();
 	hbemc->Write();
 	hbemc2d->Write();
 	hbemc2d_trig->Write();

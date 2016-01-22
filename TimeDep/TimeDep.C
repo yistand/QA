@@ -667,7 +667,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJ
 	TProfile *hbbccoinrate4Run = new TProfile("hbbccoinrate4Run",Form("BBC coincidence Rate vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hbemcNOfTower4Run = new TProfile("hbemcNOfTower4Run",Form("BEMC Number Of Towers vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hbemcratioNOfTowerMatch4Run = new TProfile("hbemcratioNOfTowerMatch4Run",Form("BEMC Number Of Matched Towers/Number Of Towers vs runid %s",datadescription),runrange,startrun,endrun);
-	TProfile *hbemcadcsum4Run = new TProfile("hbemcadcsum4Run",Form("BBEMC ADC sum vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hbemcadcsum4Run = new TProfile("hbemcadcsum4Run",Form("BBEMC energy sum vs runid %s",datadescription),runrange,startrun,endrun);
 
 	TProfile *hglobal4Run = new TProfile("hglobal4Run",Form("global vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hgoodtrk4Run = new TProfile("hgoodtrk4Run",Form("goodtrk vs runid %s",datadescription),runrange,startrun,endrun);
@@ -679,16 +679,16 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJ
 	TProfile *hEt4Run = new TProfile("hEt4Run",Form("Et vs runid %s",datadescription),runrange,startrun,endrun);
 	
 	// all run
-	TH1D *hvz = new TH1D("hvz",Form("Vz for all run %s",datadescription),10000,-100,100);
+	TH1D *hvz = new TH1D("hvz",Form("Vz for all run %s",datadescription),1000,-100,100);
 	TH2D *hvxy = new TH2D("hvxy",Form("Vx - Vy for all run %s",datadescription),1000,-4,4,1000,-4,4);
 	TH1D *hzdc = new TH1D("hzdc",Form("Zdc Coin. Rate for all run %s",datadescription),1000,0,20000);
 	TH1D *hbbc = new TH1D("hbbc",Form("Bbc Coin. Rate for all run %s",datadescription),1000,0,1500000);
 	TH2D *hBbcVsZdc = new TH2D("hBbcVsZdc",Form("hBbcVsZdc  for all run %s",datadescription),500,0,20000,500,0,1500000);
 	TH2D *hNOfGlobalVsZdc = new TH2D("hNOfGlobalVsZdc",Form("hNOfGlobalVsZdc for all run %s",datadescription),500,0,20000,500,0,1500);
 	TH2D *hgoodtrktofmatchVsNOfGlobal = new TH2D("hgoodtrktofmatchVsNOfGlobal",Form("hgoodtrktofmatchVsNOfGlobal for all run %s",datadescription),500,0,1500,10,0,10);
-	TH1D *hbemc = new TH1D("hbemc",Form("BEMC Tower ADC for all run %s",datadescription),4800,1,4801);
-	TH2D *hbemc2d = new TH2D("hbemc2d",Form("BEMC Tower ADC for all run %s",datadescription),4800,1,4801,1000,0,4096);	// 2^12, ADC 12 bits
-	TH2D *hbemc2d_trig = new TH2D("hbemc2d_trig",Form("Triggered BEMC Tower ADC for all run %s",datadescription),4800,1,4801,1000,0,4096);	// hbemc2d for trig id tower only 
+	TH1D *hbemc = new TH1D("hbemc",Form("BEMC Tower energy for all run %s",datadescription),4800,1,4801);
+	TH2D *hbemc2d = new TH2D("hbemc2d",Form("BEMC Tower energy for all run %s",datadescription),4800,1,4801,1000,0,4096);	// 2^12, ADC 12 bits
+	TH2D *hbemc2d_trig = new TH2D("hbemc2d_trig",Form("Triggered BEMC Tower Energy for all run %s",datadescription),4800,1,4801,1000,0,4096);	// hbemc2d for trig id tower only 
 
 	//TH2D *hbemc4Run = new TH2D("hbemc4Run",Form("bemc vs runid %s",datadescription),runrange,startrun,endrun,10000,-100,100);
 
@@ -744,7 +744,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJ
 
 		// Get the Tower trigger the HT event
 		for(int itrg = 0; itrg<mEv->GetHeader()->GetNOfTrigObjs(); itrg ++) {
-			hbemc2d_trig->Fill(mEv->GetTrigObj(itrg)->GetADC(),mEv->GetTrigObj(itrg)->GetId());
+			hbemc2d_trig->Fill(mEv->GetTrigObj(itrg)->GetId(),mEv->GetTrigObj(itrg)->GetEnergy());
 		}
 
 

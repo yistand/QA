@@ -205,6 +205,136 @@ bool AveSig(TProfile *h, double &ave, double &sigma) {		// average and sigma
 	return true;
 }	
 
+
+
+TH1D *hrunid(TH1D *h, TH1D *hmap) {	// h is the one vs runindex, not the real run number
+        string name = h->GetName();
+        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
+        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
+        hout->GetXaxis()->SetTitle(Form("day"));
+        hout->SetMarkerStyle(4);
+	int currentday = 0;
+	int year = floor(hmap->GetBinContent(1)/1000000);
+	//cout<<"year 20"<<year-1<<endl;
+        for(int i = 0; i<h->GetNbinsX(); i++) {
+                hout->SetBinContent(i+1,h->GetBinContent(i+1));
+                double runnumber = hmap->GetBinContent(i+1);
+                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
+                        char day[3];
+                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
+			//cout<<day<<endl;
+                        hout->GetXaxis()->SetBinLabel(i+1,day);
+                        hout->LabelsOption("hd");
+			currentday= floor(runnumber/1000)-year*1000;
+                }
+        }
+        double ave = 0, sig = 0;
+        AveSig(hout,ave,sig);
+        hout->SetMaximum(ave+10*sig);
+        hout->SetMinimum(ave-10*sig);
+
+        return hout;
+}
+
+
+TH1D *hrunid(TProfile *h, TH1D *hmap) {	// h is the one vs runindex, not the real run number
+        string name = h->GetName();
+        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
+        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
+        hout->GetXaxis()->SetTitle(Form("day"));
+        hout->SetMarkerStyle(4);
+	int currentday = 0;
+	int year = floor(hmap->GetBinContent(1)/1000000);
+	//cout<<"year 20"<<year-1<<endl;
+        for(int i = 0; i<h->GetNbinsX(); i++) {
+                hout->SetBinContent(i+1,h->GetBinContent(i+1));
+                double runnumber = hmap->GetBinContent(i+1);
+                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
+                        char day[3];
+                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
+			//cout<<day<<endl;
+                        hout->GetXaxis()->SetBinLabel(i+1,day);
+                        hout->LabelsOption("hd");
+			currentday= floor(runnumber/1000)-year*1000;
+                }
+        }
+        double ave = 0, sig = 0;
+        AveSig(hout,ave,sig);
+        hout->SetMaximum(ave+10*sig);
+        hout->SetMinimum(ave-10*sig);
+
+        return hout;
+}
+
+
+
+TH1D *hrunid(TProfile *h, TH1D *hmap, TCanvas *c, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/") {	// h is the one vs runindex, not the real run number
+        c->SetLogy(0);
+        gStyle->SetOptStat(0);
+        string name = h->GetName();
+        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
+        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
+        hout->GetXaxis()->SetTitle(Form("runid"));
+        hout->SetMarkerStyle(4);
+	int currentday = 0;
+	int year = floor(hmap->GetBinContent(1)/1000000);
+	//cout<<"year 20"<<year-1<<endl;
+        for(int i = 0; i<h->GetNbinsX(); i++) {
+                hout->SetBinContent(i+1,h->GetBinContent(i+1));
+                double runnumber = hmap->GetBinContent(i+1);
+                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
+                        char day[3];
+                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
+			//cout<<day<<endl;
+                        hout->GetXaxis()->SetBinLabel(i+1,day);
+                        hout->LabelsOption("hd");
+			currentday= floor(runnumber/1000)-year*1000;
+                }
+        }
+        double ave = 0, sig = 0;
+        AveSig(hout,ave,sig);
+        hout->SetMaximum(ave+5*sig);
+        hout->SetMinimum(ave-5*sig);
+
+        hout->Draw("p");
+
+
+        double ymax = hout->GetMaximum();
+        double ymin = hout->GetMinimum();
+        double ylat = (ymax-ymin)*0.8+ymin;
+        double xline = 0;
+        TLine *l = new TLine();
+        l->SetLineStyle(2);
+        l->SetLineColor(kGreen);
+        TLatex *lat = new TLatex();
+        lat->SetTextAngle(45);
+        lat->SetTextColor(kGreen);
+        lat->SetTextFont(62);
+        lat->SetTextSize(0.03);
+        //xline = hout->GetBinCenter(h->FindBin(12138080.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add FTPC trigger
+        //lat->DrawLatex(xline,ylat,"add FTPC trigger");
+
+        //xline = hout->GetBinCenter(h->FindBin(12140029.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian
+        //lat->DrawLatex(xline,ylat,"add future_guadian");
+
+        //xline = hout->GetBinCenter(h->FindBin(12144030.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian again
+        //lat->DrawLatex(xline,ylat,"future_guadian again");
+
+        //xline = hout->GetBinCenter(h->FindBin(12145020.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add new trigger file
+        //lat->DrawLatex(xline,ylat,"new trigger file");
+
+	c->SaveAs(Form("%sQA_%s_%s%s.png",dir,h->GetName(),tag_trig,outfiletag.Data()));
+        return hout;
+
+}
+
+
+
+
 void BadRun(TH1D *h, TH1D *hmap, vector<int> & badlist, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/", double sigmacut = 3, int CutOnOneSide = 0, double absolutecut = 0, double inputave = 0) {		
  // abnormal (>sigmacut-sigma) runid for variable in h (vs run index) 
  // If CutOnOneSide == 0:  symmetric cut on each side 
@@ -239,7 +369,7 @@ void BadRun(TH1D *h, TH1D *hmap, vector<int> & badlist, const char *tag_trig = "
 
 	
 	cout<<"Bad run for "<<h->GetTitle()<<endl<<"badrunlist["<<badlist.size()<<"] = {";
-	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
+	for(vector<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
 		cout<<*it<<", ";
 	}	
 	cout<<'\b'; // cursor moves 1 position backwards
@@ -452,103 +582,6 @@ void MergeBadRunList(list<int>& a, list<int>& b) {		// merge b into a in order, 
 	a.unique();
 }
 
-TH1D *hrunid(TProfile *h, TH1D *hmap) {	// h is the one vs runindex, not the real run number
-        string name = h->GetName();
-        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
-        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
-        hout->GetXaxis()->SetTitle(Form("day"));
-        hout->SetMarkerStyle(4);
-	int currentday = 0;
-	int year = floor(hmap->GetBinContent(1)/1000000);
-	//cout<<"year 20"<<year-1<<endl;
-        for(int i = 0; i<h->GetNbinsX(); i++) {
-                hout->SetBinContent(i+1,h->GetBinContent(i+1));
-                double runnumber = hmap->GetBinContent(i+1);
-                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
-                        char day[3];
-                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
-			//cout<<day<<endl;
-                        hout->GetXaxis()->SetBinLabel(i+1,day);
-                        hout->LabelsOption("hd");
-			currentday= floor(runnumber/1000)-year*1000;
-                }
-        }
-        double ave = 0, sig = 0;
-        AveSig(hout,ave,sig);
-        hout->SetMaximum(ave+10*sig);
-        hout->SetMinimum(ave-10*sig);
-
-        return hout;
-}
-
-
-
-TH1D *hrunid(TProfile *h, TH1D *hmap, TCanvas *c, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/") {	// h is the one vs runindex, not the real run number
-        c->SetLogy(0);
-        gStyle->SetOptStat(0);
-        string name = h->GetName();
-        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
-        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
-        hout->GetXaxis()->SetTitle(Form("runid"));
-        hout->SetMarkerStyle(4);
-	int currentday = 0;
-	int year = floor(hmap->GetBinContent(1)/1000000);
-	//cout<<"year 20"<<year-1<<endl;
-        for(int i = 0; i<h->GetNbinsX(); i++) {
-                hout->SetBinContent(i+1,h->GetBinContent(i+1));
-                double runnumber = hmap->GetBinContent(i+1);
-                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
-                        char day[3];
-                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
-			//cout<<day<<endl;
-                        hout->GetXaxis()->SetBinLabel(i+1,day);
-                        hout->LabelsOption("hd");
-			currentday= floor(runnumber/1000)-year*1000;
-                }
-        }
-        double ave = 0, sig = 0;
-        AveSig(hout,ave,sig);
-        hout->SetMaximum(ave+5*sig);
-        hout->SetMinimum(ave-5*sig);
-
-        hout->Draw("p");
-
-
-        double ymax = hout->GetMaximum();
-        double ymin = hout->GetMinimum();
-        double ylat = (ymax-ymin)*0.8+ymin;
-        double xline = 0;
-        TLine *l = new TLine();
-        l->SetLineStyle(2);
-        l->SetLineColor(kGreen);
-        TLatex *lat = new TLatex();
-        lat->SetTextAngle(45);
-        lat->SetTextColor(kGreen);
-        lat->SetTextFont(62);
-        lat->SetTextSize(0.03);
-        //xline = hout->GetBinCenter(h->FindBin(12138080.5));
-        //l->DrawLine(xline,ymin,xline,ymax);     //add FTPC trigger
-        //lat->DrawLatex(xline,ylat,"add FTPC trigger");
-
-        //xline = hout->GetBinCenter(h->FindBin(12140029.5));
-        //l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian
-        //lat->DrawLatex(xline,ylat,"add future_guadian");
-
-        //xline = hout->GetBinCenter(h->FindBin(12144030.5));
-        //l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian again
-        //lat->DrawLatex(xline,ylat,"future_guadian again");
-
-        //xline = hout->GetBinCenter(h->FindBin(12145020.5));
-        //l->DrawLine(xline,ymin,xline,ymax);     //add new trigger file
-        //lat->DrawLatex(xline,ylat,"new trigger file");
-
-	c->SaveAs(Form("%sQA_%s_%s%s.png",dir,h->GetName(),tag_trig,outfiletag.Data()));
-        return hout;
-
-}
-
-
-
 
 
 
@@ -556,7 +589,9 @@ TH1D *hrunid(TProfile *h, TH1D *hmap, TCanvas *c, const char *tag_trig = "NPE25"
 //================== Main Function =============================
 //==============================================================
 //void TimeDep(TString fin="/home/ly247/code/BEMCHTFinder/AuAu200Run11NPE18Central.list") {
-void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TString outfiletag="",const char *tag_trig="MB") {
+//void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TString outfiletag="",const char *tag_trig="MB") {
+//void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoMB_sum*.root",TString outfiletag="",const char *tag_trig="MB") {
+void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJP2_sum*.root",TString outfiletag="",const char *tag_trig="JP2") {
 //void TimeDep(int fileid = 0) {
 //	gSystem->Load("libPhysics");		// needed to TLorentVector
 //	gSystem->Load("libHist");		// needed to TLorentVector

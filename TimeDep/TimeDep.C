@@ -905,7 +905,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJ
 
 	TProfile *hbemcenergy4runindex[NTower];
 	for(int i = 0; i<NTower; i++) {
-		hbemcenergy4runindex[i] = new TProfile(Form("hbemcenergy4runindex_Tower%d",i+1),Form("BEMC Tower %d ADC vs runindex %s",i+1,datadescription),runindexsize,0,runindexsize);
+		hbemcenergy4runindex[i] = new TProfile(Form("hbemcenergy4runindex_Tower%d",ArrayTower[i]),Form("BEMC Tower %d energy vs runindex %s",i+1,datadescription),runindexsize,0,runindexsize);
 	}
 	
 	convertrunindex(runindex,hrefmult4Run,hrefmult4runindex);

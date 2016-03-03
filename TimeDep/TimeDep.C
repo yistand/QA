@@ -11,14 +11,17 @@
 #include <list>
 #include <algorithm>    // std::sort
 #include <vector>       // std::vector
+#include <iomanip>	// std::setprecision
 
 
 #include "TFile.h"
+#include "TStyle.h"
 #include "TROOT.h"
 #include "TSystem.h"
 #include "TTree.h"
 #include "TH1D.h"
 #include "TH2D.h"
+#include "TLatex.h"
 #include "TProfile.h"
 #include "TChain.h"
 #include "TLine.h"
@@ -33,10 +36,119 @@
 
 using namespace std;
 
+int convertphi(double phi, int offset=0) {		// convert phi into section. offset is used to set east & west section.
+// West section is 1 to 12. offset should be 0
+// East section is 13 to 24. offset should be 12
+// https://drupal.star.bnl.gov/STAR/files/starnotes/csn0229a.pdf
+	int sec = 0;
+	double phip = TMath::Pi()*5./12.-phi;
+
+	sec = TMath::Ceil(phip/(TMath::Pi()/6.));
+	if(sec<=0) sec+=12;
+	if(sec>12) sec-=12;
+	sec+=offset;
+	return sec;
+}
+
+int convertsetwest(int sec) {			// input 1-12, output 1-12 no change
+	return sec;
+}
+
+int convertseteast(int sec) {			// input 1-12, output 13-24
+// https://drupal.star.bnl.gov/STAR/files/starnotes/csn0229a.pdf
+	int eastsec = 24 - sec;
+	if(eastsec==12) eastsec = 24;
+	return eastsec;
+}
+
+void convertrunindex(TProfile *oldp, TProfile* newp)	{ 		// runid -> runindex, use hp to figure out runindex
+
+	vector<int> runindex;
+	for(int oi = 0; oi<oldp->GetNbinsX(); oi++) {
+		if(oldp->GetBinContent(oi+1)>0) {
+			runindex.push_back(oi+1);
+			//cout<<"+ "<<oi+1<<endl;
+		}
+	}
+
+// copy TProfile needs to be done in the ways:
+// - sum of bin y values 
+// - sum of bin y*y values 
+// - sum of bin weight = number of bin entries if profile is filled with weights =1 
+// - sum of bin weight ^2 if the profile is filled with weights different than 1 
+// all been copied for each bin
+// SetBinContent & SetBinError as TH1D method not working for TProfile properly
+	for(unsigned int ir = 0; ir<runindex.size(); ir++) {
+		int newbin=ir+1;
+		int oldbin=runindex.at(ir);
+		//cout<<oldbin<<" --> "<<newbin<<endl;
+		(*newp)[newbin]=(*oldp)[oldbin];		// copy y
+		(*newp->GetSumw2())[newbin] = (*oldp->GetSumw2())[oldbin];		// copy y*y
+		newp->SetBinEntries(newbin,oldp->GetBinEntries(oldbin));		// copy entries
+		if( oldp->GetBinSumw2()->fN > oldbin) {					// copy (if needed) bin sum of weight square
+			newp->Sumw2();
+			(*newp->GetBinSumw2())[newbin] = (*oldp->GetBinSumw2())[oldbin];
+		}
+	}
+	//cout<<"Done runid --> runindex"<<endl;
+}
+
+
+void convertrunindex(TProfile *hp, TH1D* h)	{ 		// runid -> runindex, use hp to figure out runindex
+	vector<int> runindex;
+	for(int i = 0; i<hp->GetNbinsX(); i++) {
+		if(hp->GetBinContent(i+1)>0) {
+			runindex.push_back(i+1);
+		}
+	}
+
+	for(unsigned int ir = 0; ir<runindex.size(); ir++) {
+		h->SetBinContent(ir+1,hp->GetBinContent(runindex.at(ir)));
+		h->SetBinError(ir+1,hp->GetBinError(runindex.at(ir)));
+	}
+}
+
+
+void convertrunindex(TH1D *hp, TH1D* h)	{ 		// runid -> runindex, use hp to figure out runindex
+	vector<int> runindex;
+	for(int i = 0; i<hp->GetNbinsX(); i++) {
+		if(hp->GetBinContent(i+1)>0) {
+			runindex.push_back(i+1);
+		}
+	}
+
+	for(unsigned int ir = 0; ir<runindex.size(); ir++) {
+		h->SetBinContent(ir+1,hp->GetBinContent(runindex.at(ir)));
+		h->SetBinError(ir+1,hp->GetBinError(runindex.at(ir)));
+	}
+}
+
+
 void convertrunindex(const vector<int>&  runindex, TProfile *hp, TH1D* h)	{ 		// runid -> runindex
 	for(unsigned int ir = 0; ir<runindex.size(); ir++) {
 		h->SetBinContent(ir+1,hp->GetBinContent(runindex.at(ir)));
 		h->SetBinError(ir+1,hp->GetBinError(runindex.at(ir)));
+	}
+}
+
+void convertrunindex(const vector<int>&  runindex, TProfile *oldp, TProfile* newp)	{ 		// runid -> runindex
+// copy TProfile needs to be done in the ways:
+// - sum of bin y values 
+// - sum of bin y*y values 
+// - sum of bin weight = number of bin entries if profile is filled with weights =1 
+// - sum of bin weight ^2 if the profile is filled with weights different than 1 
+// all been copied for each bin
+// SetBinContent & SetBinError as TH1D method not working for TProfile properly
+	for(unsigned int ir = 0; ir<runindex.size(); ir++) {
+		int newbin=ir+1;
+		int oldbin=runindex.at(ir);
+		(*newp)[newbin]=(*oldp)[oldbin];		// copy y
+		(*newp->GetSumw2())[newbin] = (*oldp->GetSumw2())[oldbin];		// copy y*y
+		newp->SetBinEntries(newbin,oldp->GetBinEntries(oldbin));		// copy entries
+		if( oldp->GetBinSumw2()->fN > oldbin) {					// copy (if needed) bin sum of weight square
+			newp->Sumw2();
+			(*newp->GetBinSumw2())[newbin] = (*oldp->GetBinSumw2())[oldbin];
+		}
 	}
 }
 
@@ -66,20 +178,216 @@ bool AveSig(TH1D *h, double &ave, double &sigma) {		// average and sigma
 	return true;
 }	
 
-void BadRun(TH1D *h, TH1D *hmap, vector<int> & badlist, const char *tag_trig = "NPE25", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/", double sigmacut = 3 ) {			// abnormal (>sigmacut-sigma) runid for variable in h (vs run index) 
+
+bool AveSig(TProfile *h, double &ave, double &sigma) {		// average and sigma 
+	ave = 0;
+	sigma = 0;
+	if(!h || h->GetNbinsX()==0) {
+		cout<<"NULL input histogram in AveSig()"<<endl;
+		return false;
+	}
+	if(h->GetNbinsX()==1) {
+		ave = h->GetBinContent(1);
+		sigma = 0;
+		return false;
+	}
+	for(int i = 0; i<h->GetNbinsX(); i++) {
+		ave+=h->GetBinContent(i+1);
+	}
+	ave/=h->GetNbinsX();
+
+	for(int i = 0; i<h->GetNbinsX(); i++) {
+		sigma+=pow((h->GetBinContent(i+1)-ave),2);
+	}
+	sigma/=h->GetNbinsX()-1;
+	sigma=sqrt(sigma);
+		
+	return true;
+}	
+
+
+
+TH1D *hrunid(TH1D *h, TH1D *hmap) {	// h is the one vs runindex, not the real run number
+        string name = h->GetName();
+        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
+        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
+        hout->GetXaxis()->SetTitle(Form("day"));
+        hout->SetMarkerStyle(4);
+	int currentday = 0;
+	int year = floor(hmap->GetBinContent(1)/1000000);
+	//cout<<"year 20"<<year-1<<endl;
+        for(int i = 0; i<h->GetNbinsX(); i++) {
+                hout->SetBinContent(i+1,h->GetBinContent(i+1));
+                double runnumber = hmap->GetBinContent(i+1);
+                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
+                        char day[3];
+                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
+			//cout<<day<<endl;
+                        hout->GetXaxis()->SetBinLabel(i+1,day);
+                        hout->LabelsOption("hd");
+			currentday= floor(runnumber/1000)-year*1000;
+                }
+        }
+        double ave = 0, sig = 0;
+        AveSig(hout,ave,sig);
+        hout->SetMaximum(ave+10*sig);
+        hout->SetMinimum(ave-10*sig);
+
+        return hout;
+}
+
+
+TH1D *hrunid(TProfile *h, TH1D *hmap) {	// h is the one vs runindex, not the real run number
+        string name = h->GetName();
+        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
+        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
+        hout->GetXaxis()->SetTitle(Form("day"));
+        hout->SetMarkerStyle(4);
+	int currentday = 0;
+	int year = floor(hmap->GetBinContent(1)/1000000);
+	//cout<<"year 20"<<year-1<<endl;
+        for(int i = 0; i<h->GetNbinsX(); i++) {
+                hout->SetBinContent(i+1,h->GetBinContent(i+1));
+                double runnumber = hmap->GetBinContent(i+1);
+                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
+                        char day[3];
+                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
+			//cout<<day<<endl;
+                        hout->GetXaxis()->SetBinLabel(i+1,day);
+                        hout->LabelsOption("hd");
+			currentday= floor(runnumber/1000)-year*1000;
+                }
+        }
+        double ave = 0, sig = 0;
+        AveSig(hout,ave,sig);
+        hout->SetMaximum(ave+10*sig);
+        hout->SetMinimum(ave-10*sig);
+
+        return hout;
+}
+
+
+
+TH1D *hrunid(TProfile *h, TH1D *hmap, TCanvas *c, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/") {	// h is the one vs runindex, not the real run number
+        c->SetLogy(0);
+        gStyle->SetOptStat(0);
+        string name = h->GetName();
+        TH1D *hout = new TH1D(Form("%s_perrun",name.data()),Form("%s",h->GetTitle()),h->GetNbinsX(),0,h->GetNbinsX());
+        hout->GetYaxis()->SetTitle(Form("%s",name.data()));
+        hout->GetXaxis()->SetTitle(Form("runid"));
+        hout->SetMarkerStyle(4);
+	int currentday = 0;
+	int year = floor(hmap->GetBinContent(1)/1000000);
+	//cout<<"year 20"<<year-1<<endl;
+        for(int i = 0; i<h->GetNbinsX(); i++) {
+                hout->SetBinContent(i+1,h->GetBinContent(i+1));
+                double runnumber = hmap->GetBinContent(i+1);
+                if(fabs(currentday-(floor(runnumber/1000)-year*1000))>1e-6) {
+                        char day[3];
+                        sprintf(day,"%d",floor(runnumber/1000-year*1000));
+			//cout<<day<<endl;
+                        hout->GetXaxis()->SetBinLabel(i+1,day);
+                        hout->LabelsOption("hd");
+			currentday= floor(runnumber/1000)-year*1000;
+                }
+        }
+        double ave = 0, sig = 0;
+        AveSig(hout,ave,sig);
+        hout->SetMaximum(ave+5*sig);
+        hout->SetMinimum(ave-5*sig);
+
+        hout->Draw("p");
+
+
+        double ymax = hout->GetMaximum();
+        double ymin = hout->GetMinimum();
+        double ylat = (ymax-ymin)*0.8+ymin;
+        double xline = 0;
+        TLine *l = new TLine();
+        l->SetLineStyle(2);
+        l->SetLineColor(kGreen);
+        TLatex *lat = new TLatex();
+        lat->SetTextAngle(45);
+        lat->SetTextColor(kGreen);
+        lat->SetTextFont(62);
+        lat->SetTextSize(0.03);
+        //xline = hout->GetBinCenter(h->FindBin(12138080.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add FTPC trigger
+        //lat->DrawLatex(xline,ylat,"add FTPC trigger");
+
+        //xline = hout->GetBinCenter(h->FindBin(12140029.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian
+        //lat->DrawLatex(xline,ylat,"add future_guadian");
+
+        //xline = hout->GetBinCenter(h->FindBin(12144030.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add future_guadian again
+        //lat->DrawLatex(xline,ylat,"future_guadian again");
+
+        //xline = hout->GetBinCenter(h->FindBin(12145020.5));
+        //l->DrawLine(xline,ymin,xline,ymax);     //add new trigger file
+        //lat->DrawLatex(xline,ylat,"new trigger file");
+
+	c->SaveAs(Form("%sQA_%s_%s%s.png",dir,h->GetName(),tag_trig,outfiletag.Data()));
+        return hout;
+
+}
+
+
+
+
+void BadRun(TH1D *h, TH1D *hmap, vector<int> & badlist, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/Scratch/mapBEMCauau11Pico/", double sigmacut = 3, int CutOnOneSide = 0, double absolutecut = 0, double inputave = 0) {		
+ // abnormal (>sigmacut-sigma) runid for variable in h (vs run index) 
+ // If CutOnOneSide == 0:  symmetric cut on each side 
+ // If CutOnOneSide == 1:  cut off the one exceed upper limit  
+ // If CutOnOneSide == -1: cut off the one lower than low limit 
+ // If absolutecut != 0 : use absolutecut as mean+/-absolutecut
+
 	double ave = 0, sig = 0;
 	AveSig(h,ave,sig);
 	badlist.clear();
+
+	if( fabs(inputave) > 1e-6) {
+		ave = inputave;
+	}
+	absolutecut = fabs(absolutecut);
+	if( fabs(absolutecut) < 1e-6) {		// if absolutecut==0, use relative cut
+		absolutecut = sig*sigmacut;
+	}
+
+	cout<<"cut "<<ave<<"+/-"<<absolutecut<<endl;
 	for(int i = 0; i<h->GetNbinsX(); i++) {
-		if(h->GetBinContent(i+1)>ave+sig*sigmacut || h->GetBinContent(i+1)<ave-sig*sigmacut) {
+		if( CutOnOneSide==0 && (h->GetBinContent(i+1)>ave+absolutecut || h->GetBinContent(i+1)<ave-absolutecut) ) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+		if( CutOnOneSide==1 && h->GetBinContent(i+1)>ave+absolutecut ) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+		if( CutOnOneSide==-1 && h->GetBinContent(i+1)<ave-absolutecut ) {
 			badlist.push_back(hmap->GetBinContent(i+1));
 		}
 	}
 
+	
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"badrunlist["<<badlist.size()<<"] = {";
+	for(vector<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
+		cout<<*it<<", ";
+	}	
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<"};"<<endl;
+
 	TCanvas *c = new TCanvas(Form("c%s",h->GetName()),h->GetTitle());
-	h->SetMaximum(ave+sig*10);
-	h->SetMinimum(ave-sig*10);
-	h->Draw("pe");
+	gStyle->SetOptStat(0);
+	//h->SetMaximum(ave+sig*10);
+	//h->SetMinimum(ave-sig*10);
+	//h->Draw("pe");
+	TH1D *htemp = (TH1D*)hrunid(h,hmap);
+	htemp->SetMarkerStyle(h->GetMarkerStyle());
+	htemp->SetMarkerColor(h->GetMarkerColor());
+	htemp->SetLineStyle(h->GetLineStyle());
+	htemp->SetLineColor(h->GetLineColor());
+	htemp->Draw("p");
+	h->Draw("pesame");
 	double xmin = h->GetBinCenter(1);
 	double xmax = h->GetBinCenter(h->GetNbinsX()+1);
 	TLine *l = new TLine();
@@ -87,27 +395,69 @@ void BadRun(TH1D *h, TH1D *hmap, vector<int> & badlist, const char *tag_trig = "
 	l->SetLineStyle(2);
 	l->DrawLine(xmin,ave,xmax,ave);
 	l->SetLineStyle(1);
-	l->DrawLine(xmin,ave+sigmacut*sig,xmax,ave+sigmacut*sig);
-	l->DrawLine(xmin,ave-sigmacut*sig,xmax,ave-sigmacut*sig);
+	if( CutOnOneSide>=0 ) {
+		l->DrawLine(xmin,ave+absolutecut,xmax,ave+absolutecut);
+	}
+	if( CutOnOneSide<=0 ) {
+		l->DrawLine(xmin,ave-absolutecut,xmax,ave-absolutecut);
+	}
 
-	c->SaveAs(Form("%sQA_%s_%s.png",dir,h->GetName(),tag_trig));
+	c->SaveAs(Form("%sQA_%s_%s%s.png",dir,h->GetName(),tag_trig,outfiletag.Data()));
 }
 
 
-void BadRun(TH1D *h, TH1D *hmap, list<int> & badlist, const char *tag_trig = "NPE25", const char *dir = "$HOME/scratch/mapBEMCauau11Pico/", double sigmacut = 3 ) {			// abnormal (>sigmacut-sigma) runid for variable in h (vs run index) 
+void BadRun(TH1D *h, TH1D *hmap, list<int> & badlist, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/scratch/mapBEMCauau11Pico/", double sigmacut = 3, int CutOnOneSide = 0, double absolutecut = 0, double inputave = 0) {			
+ // abnormal (>sigmacut-sigma) runid for variable in h (vs run index) 
+ // If CutOnOneSide == 0:  symmetric cut on each side 
+ // If CutOnOneSide == 1:  cut off the one exceed upper limit  
+ // If CutOnOneSide == -1: cut off the one lower than low limit 
+ // If absolutecut != 0 : use absolutecut as mean+/-absolutecut
+
 	double ave = 0, sig = 0;
 	AveSig(h,ave,sig);
 	badlist.clear();
+
+	if( fabs(inputave) > 1e-6) {
+		ave = inputave;
+	}
+	absolutecut = fabs(absolutecut);
+	if( fabs(absolutecut) < 1e-6) {		// if absolutecut==0, use relative cut
+		absolutecut = sig*sigmacut;
+	}
+
 	for(int i = 0; i<h->GetNbinsX(); i++) {
-		if(h->GetBinContent(i+1)>ave+sig*sigmacut || h->GetBinContent(i+1)<ave-sig*sigmacut) {
+		if( CutOnOneSide==0 && (h->GetBinContent(i+1)>ave+absolutecut || h->GetBinContent(i+1)<ave-absolutecut) ) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+		if( CutOnOneSide==1 && h->GetBinContent(i+1)>ave+absolutecut ) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+		if( CutOnOneSide==-1 && h->GetBinContent(i+1)<ave-absolutecut ) {
 			badlist.push_back(hmap->GetBinContent(i+1));
 		}
 	}
 
+	
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"badrunlist["<<badlist.size()<<"] = {";
+	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
+		cout<<*it<<", ";
+	}	
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<"};"<<endl;
+
 	TCanvas *c = new TCanvas(Form("c%s",h->GetName()),h->GetTitle());
-	h->SetMaximum(ave+sig*10);
-	h->SetMinimum(ave-sig*10);
-	h->Draw("pe");
+	gStyle->SetOptStat(0);
+	//h->SetMaximum(ave+sig*10);
+	//h->SetMinimum(ave-sig*10);
+	//h->Draw("pe");
+	TH1D *htemp = (TH1D*)hrunid(h,hmap);
+	htemp->SetMarkerStyle(h->GetMarkerStyle());
+	htemp->SetMarkerColor(h->GetMarkerColor());
+	htemp->SetLineStyle(h->GetLineStyle());
+	htemp->SetLineColor(h->GetLineColor());
+	htemp->Draw("p");
+	h->Draw("pesame");
 	double xmin = h->GetBinCenter(1);
 	double xmax = h->GetBinCenter(h->GetNbinsX()+1);
 	TLine *l = new TLine();
@@ -115,13 +465,87 @@ void BadRun(TH1D *h, TH1D *hmap, list<int> & badlist, const char *tag_trig = "NP
 	l->SetLineStyle(2);
 	l->DrawLine(xmin,ave,xmax,ave);
 	l->SetLineStyle(1);
-	l->DrawLine(xmin,ave+sigmacut*sig,xmax,ave+sigmacut*sig);
-	l->DrawLine(xmin,ave-sigmacut*sig,xmax,ave-sigmacut*sig);
+	if( CutOnOneSide>=0 ) {
+		l->DrawLine(xmin,ave+absolutecut,xmax,ave+absolutecut);
+	}
+	if( CutOnOneSide<=0 ) {
+		l->DrawLine(xmin,ave-absolutecut,xmax,ave-absolutecut);
+	}
 
-	c->SaveAs(Form("%sQA_%s_%s.png",dir,h->GetName(),tag_trig));
+	c->SaveAs(Form("%sQA_%s_%s%s.png",dir,h->GetName(),tag_trig,outfiletag.Data()));
 }
 
-void MergeBadRunList(vector<int>& a, const vector<int>& b) {		// merge b into a in order, assume both a and b is in ascending order 
+
+void BadRun(TProfile *h, TH1D *hmap, list<int> & badlist, const char *tag_trig = "NPE25", TString outfiletag="", const char *dir = "$HOME/scratch/mapBEMCauau11Pico/", double sigmacut = 3, int CutOnOneSide = 0, double absolutecut = 0, double inputave = 0) {			
+ // abnormal (>sigmacut-sigma) runid for variable in h (vs run index) 
+ // If CutOnOneSide == 0:  symmetric cut on each side 
+ // If CutOnOneSide == 1:  cut off the one exceed upper limit  
+ // If CutOnOneSide == -1: cut off the one lower than low limit 
+ // If absolutecut != 0 : use absolutecut as mean+/-absolutecut
+
+	double ave = 0, sig = 0;
+	AveSig(h,ave,sig);
+	badlist.clear();
+
+	if( fabs(inputave) > 1e-6) {
+		ave = inputave;
+	}
+	absolutecut = fabs(absolutecut);
+	if( fabs(absolutecut) < 1e-6) {		// if absolutecut==0, use relative cut
+		absolutecut = sig*sigmacut;
+	}
+
+	for(int i = 0; i<h->GetNbinsX(); i++) {
+		if( CutOnOneSide==0 && (h->GetBinContent(i+1)>ave+absolutecut || h->GetBinContent(i+1)<ave-absolutecut) ) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+		if( CutOnOneSide==1 && h->GetBinContent(i+1)>ave+absolutecut ) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+		if( CutOnOneSide==-1 && h->GetBinContent(i+1)<ave-absolutecut ) {
+			badlist.push_back(hmap->GetBinContent(i+1));
+		}
+	}
+	
+	cout<<"Bad run for "<<h->GetTitle()<<endl<<"badrunlist["<<badlist.size()<<"] = {";
+	for(list<int>::iterator it = badlist.begin(); it!=badlist.end(); ++it) {
+		cout<<*it<<", ";
+	}	
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<'\b'; // cursor moves 1 position backwards
+	cout<<"};"<<endl;
+
+	TCanvas *c = new TCanvas(Form("c%s",h->GetName()),h->GetTitle());
+	gStyle->SetOptStat(0);
+	//h->SetMaximum(ave+sig*10);
+	//h->SetMinimum(ave-sig*10);
+	//h->Draw("pe");
+	h->SetMarkerStyle(4);
+	TH1D *htemp = (TH1D*)hrunid(h,hmap);
+	htemp->SetMarkerStyle(h->GetMarkerStyle());
+	htemp->SetMarkerColor(h->GetMarkerColor());
+	htemp->SetLineStyle(h->GetLineStyle());
+	htemp->SetLineColor(h->GetLineColor());
+	htemp->Draw("p");
+	h->Draw("pesame");
+	double xmin = h->GetBinCenter(1);
+	double xmax = h->GetBinCenter(h->GetNbinsX()+1);
+	TLine *l = new TLine();
+	l->SetLineColor(2);
+	l->SetLineStyle(2);
+	l->DrawLine(xmin,ave,xmax,ave);
+	l->SetLineStyle(1);
+	if( CutOnOneSide>=0 ) {
+		l->DrawLine(xmin,ave+absolutecut,xmax,ave+absolutecut);
+	}
+	if( CutOnOneSide<=0 ) {
+		l->DrawLine(xmin,ave-absolutecut,xmax,ave-absolutecut);
+	}
+
+	c->SaveAs(Form("%sQA_%s_%s%s.png",dir,h->GetName(),tag_trig,outfiletag.Data()));
+}
+
+void MergeBadRunList(vector<int>& a, const vector<int>& b) {		// merge b into a in order, assume both a and b are in ascending order 
 	std::vector<int>::iterator ia;
 	std::vector<int>::const_iterator ib;
 	for(ib = b.begin(); ib!=b.end(); ib++) {
@@ -153,10 +577,11 @@ void MergeBadRunList(vector<int>& a, const vector<int>& b) {		// merge b into a 
 //}
 
 
-void MergeBadRunList(list<int>& a, list<int>& b) {		// merge b into a in order, assume both a and b is in ascending order , b will be empty
+void MergeBadRunList(list<int>& a, list<int>& b) {		// merge b into a in order, assume both a and b are in ascending order , b will be empty
 	a.merge(b);	
 	a.unique();
 }
+
 
 
 
@@ -164,7 +589,9 @@ void MergeBadRunList(list<int>& a, list<int>& b) {		// merge b into a in order, 
 //================== Main Function =============================
 //==============================================================
 //void TimeDep(TString fin="/home/ly247/code/BEMCHTFinder/AuAu200Run11NPE18Central.list") {
-void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
+//void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TString outfiletag="",const char *tag_trig="MB") {
+//void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoMB_sum*.root",TString outfiletag="",const char *tag_trig="MB") {
+void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJP2_sum*.root",TString outfiletag="",const char *tag_trig="JP2") {
 //void TimeDep(int fileid = 0) {
 //	gSystem->Load("libPhysics");		// needed to TLorentVector
 //	gSystem->Load("libHist");		// needed to TLorentVector
@@ -178,6 +605,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 	TString cName="";
 
 	// Following load root files
+	cout<<fin<<endl;
 	int fcount = 0;
 	if (fin.Contains("root")){
 		cName=fin;
@@ -196,7 +624,8 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 				const char *name;
 				name=strin->Data();
 				cName=name;
-				J->Add(strin->Data()); fcount++;
+				J->Add(strin->Data());
+				fcount++;
 				//if(fcount>100) break;	// test
 			}
 		}
@@ -208,6 +637,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 		}
 		cout<<"read in "<<fcount<<" files"<<endl;
 	}
+	cout<<"reading finished"<<endl;
 
 	// Creat output root file and histogram
 	// NPE-15
@@ -217,12 +647,14 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 	//int endrun = 12171016;
 	
 	// NPE-25, NPE-18
-	const char *tag_trig="MB";   // "NPE25";
+	//const char *tag_trig="MB";   // "NPE25";
 	const char *outdir="/home/fas/caines/ly247/scratch/run12ppQA/out/";
 	char datadescription[100];sprintf(datadescription, "%s Run12 pp 200 GeV",tag_trig);
 	int startrun = 13039166;
-	int endrun = 13104049;
-	int runrange = endrun-startrun+1;
+	int endrun = 13104049+1;		// make sure all possible run included
+	int runrange = endrun-startrun;		// how many histogram bins
+	double PtCut4TPCsec = 2;	// For TPC section phi study vs runid. Larger pT, More straight, easier to tell different TPC section.
+	double diffvzvpdvz = 3;		// |Vz - VpdVz| < diffvzvpdvz
 
 	// per run
 	TH1D *hrunid4Run = new TH1D("hrunid4Run",Form("runid vs runid (to filter out void runid) %s",datadescription),runrange,startrun,endrun);
@@ -230,39 +662,65 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 	TProfile *hvx4Run = new TProfile("hvx4Run",Form("vx vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hvy4Run = new TProfile("hvy4Run",Form("vy vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hvz4Run = new TProfile("hvz4Run",Form("vz vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hDiffVzVpdVz4Run = new TProfile("hDiffVzVpdVz4Run",Form("vz-VpdVz vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hNPVertex4Run = new TProfile("hNPVertex4Run",Form("NumberOfPrimaryVertices vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hratioP2G4Run = new TProfile("hratioP2G4Run",Form("NumberOfPrimaryTrack/GlobalTrack vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hNPtracks4Run = new TProfile("hNPtracks4Run",Form("NumberOfPrimaryTrack vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hNGtracks4Run = new TProfile("hNGtracks4Run",Form("NumberOfGlobalTrack vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hratioTrackMatch4Run = new TProfile("hratioTrackMatch4Run",Form("NOfMatchedTracks/NOfPTracks vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hzdccoinrate4Run = new TProfile("hzdccoinrate4Run",Form("ZDC coincidence Rate vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hbbccoinrate4Run = new TProfile("hbbccoinrate4Run",Form("BBC coincidence Rate vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hTpcEastNTrackPerSet4Run[12];
+	for(int is = 0; is<12 ; is++) {
+ 		hTpcEastNTrackPerSet4Run[is] = new TProfile(Form("hTpcEastNTrackPerSet4Run_Sec%d",convertseteast(is+1)),Form("Number of Primary Tracks in TPC section%d pT>%g %s",convertseteast(is+1),PtCut4TPCsec,datadescription),runrange,startrun,endrun);
+	}
+	TProfile *hTpcWestNTrackPerSet4Run[12];
+	for(int is = 0; is<12 ; is++) {
+ 		hTpcWestNTrackPerSet4Run[is] = new TProfile(Form("hTpcWestNTrackPerSet4Run_Sec%d",is+1),Form("Number of Primary Tracks in TPC section%d pT>%g %s",is+1,PtCut4TPCsec,datadescription),runrange,startrun,endrun);
+	}
 	TProfile *hbemcNOfTower4Run = new TProfile("hbemcNOfTower4Run",Form("BEMC Number Of Towers vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hbemcratioNOfTowerMatch4Run = new TProfile("hbemcratioNOfTowerMatch4Run",Form("BEMC Number Of Matched Towers/Number Of Towers vs runid %s",datadescription),runrange,startrun,endrun);
-	TProfile *hbemcadcsum4Run = new TProfile("hbemcadcsum4Run",Form("BBEMC ADC sum vs runid %s",datadescription),runrange,startrun,endrun);
+	TProfile *hbemcenergysum4Run = new TProfile("hbemcenergysum4Run",Form("BBEMC energy sum vs runid %s",datadescription),runrange,startrun,endrun);
+
+
+	const int NTower = 29;// 4800;
+	const int ArrayTower[NTower] = {275, 293, 555, 562, 743, 897, 1130, 1132, 1537, 1984, 2043, 2162, 2439, 2459, 2633, 2652, 2749, 2834, 3005, 3690, 3692, 3738, 3838, 3927, 3945, 4005, 4013, 4053, 4458};
+	TProfile *hbemcenergy4Run[NTower];
+	for(int i = 0; i<NTower; i++) {
+		hbemcenergy4Run[i] = new TProfile(Form("hbemcenergy4Run_Tower%d",ArrayTower[i]),Form("BEMC Tower %d energy vs runid %s",ArrayTower[i],datadescription),runrange,startrun,endrun);
+	}
 
 	TProfile *hgoodtrk4Run = new TProfile("hgoodtrk4Run",Form("goodtrk vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hgoodtrkbemcmatch4Run = new TProfile("hgoodtrkbemcmatch4Run",Form("goodtrkbemcmatch vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hgoodtrktofmatch4Run = new TProfile("hgoodtrktofmatch4Run",Form("goodtrktofmatch vs runid %s",datadescription),runrange,startrun,endrun);
 
+	TProfile *hphi4Run = new TProfile("hphi4Run",Form("phi vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hdca4Run = new TProfile("hdca4Run",Form("dca vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hpt4Run = new TProfile("hpt4Run",Form("pt vs runid %s",datadescription),runrange,startrun,endrun);
 	TProfile *hEt4Run = new TProfile("hEt4Run",Form("Et vs runid %s",datadescription),runrange,startrun,endrun);
 	
 	// all run
-	TH1D *hvz = new TH1D("hvz",Form("Vz for all run %s",datadescription),10000,-100,100);
+	TH1D *hvz = new TH1D("hvz",Form("Vz for all run %s",datadescription),1000,-100,100);
 	TH2D *hvxy = new TH2D("hvxy",Form("Vx - Vy for all run %s",datadescription),1000,-4,4,1000,-4,4);
-	TH1D *hbemc = new TH1D("hbemc",Form("BEMC Tower ADC for all run %s",datadescription),4800,1,4801);
-	TH2D *hbemc2d = new TH2D("hbemc2d",Form("BEMC Tower ADC for all run %s",datadescription),4800,1,4801,1000,0,4096);	// 2^12, ADC 12 bits
+	TH1D *hzdc = new TH1D("hzdc",Form("Zdc Coin. Rate for all run %s",datadescription),1000,0,20000);
+	TH1D *hbbc = new TH1D("hbbc",Form("Bbc Coin. Rate for all run %s",datadescription),1000,0,1500000);
+	TH2D *hBbcVsZdc = new TH2D("hBbcVsZdc",Form("hBbcVsZdc  for all run %s",datadescription),500,0,20000,500,0,1500000);
+	TH2D *hNOfGlobalVsZdc = new TH2D("hNOfGlobalVsZdc",Form("hNOfGlobalVsZdc for all run %s",datadescription),500,0,20000,500,0,1500);
+	TH2D *hgoodtrktofmatchVsNOfGlobal = new TH2D("hgoodtrktofmatchVsNOfGlobal",Form("hgoodtrktofmatchVsNOfGlobal for all run %s",datadescription),500,0,1500,10,0,10);
+	TH1D *hbemc = new TH1D("hbemc",Form("BEMC Tower energy for all run %s",datadescription),4800,1,4801);
+	TH2D *hbemc2d = new TH2D("hbemc2d",Form("BEMC Tower energy for all run %s",datadescription),4800,1,4801,1000,0,4096);	// 2^12, ADC 12 bits
 	TH2D *hbemc2d_trig = new TH2D("hbemc2d_trig",Form("Triggered BEMC Tower ADC for all run %s",datadescription),4800,1,4801,1000,0,4096);	// hbemc2d for trig id tower only 
 
 	//TH2D *hbemc4Run = new TH2D("hbemc4Run",Form("bemc vs runid %s",datadescription),runrange,startrun,endrun,10000,-100,100);
 
 
 	//  Read in Tree
+	cout<<"read in tree"<<endl;
 	TStarJetPicoEvent *mEv = new TStarJetPicoEvent();
 	J->SetBranchAddress("PicoJetTree",&mEv);
 
 	TStarJetPicoEventCuts *EvCut = new TStarJetPicoEventCuts();
-	EvCut->SetTriggerSelection("ppMB");
+	EvCut->SetTriggerSelection(Form("pp%s",tag_trig));
 
 	Int_t ievents = J->GetEntries();
 
@@ -285,6 +743,10 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 		int runid = mEv->GetHeader()->GetRunId();
 		hvz->Fill(mEv->GetHeader()->GetPrimaryVertexZ());
 		hvxy->Fill(mEv->GetHeader()->GetPrimaryVertexX(),mEv->GetHeader()->GetPrimaryVertexY());
+		hzdc->Fill(mEv->GetHeader()->GetZdcCoincidenceRate());
+		hBbcVsZdc->Fill(mEv->GetHeader()->GetZdcCoincidenceRate(),mEv->GetHeader()->GetBbcCoincidenceRate());
+		hNOfGlobalVsZdc->Fill(mEv->GetHeader()->GetZdcCoincidenceRate(),mEv->GetHeader()->GetNGlobalTracks());
+		hbbc->Fill(mEv->GetHeader()->GetBbcCoincidenceRate());
 
 		hrunid4Run->Fill(runid);
 		hrefmult4Run->Fill(runid,mEv->GetHeader()->GetReferenceMultiplicity());
@@ -294,6 +756,8 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 		hNPVertex4Run->Fill(runid,mEv->GetHeader()->GetNumberOfVertices());
 		hratioP2G4Run->Fill(runid,(mEv->GetHeader()->GetNGlobalTracks()==0)?0:(1.*mEv->GetHeader()->GetNOfPrimaryTracks()/mEv->GetHeader()->GetNGlobalTracks()));
 		hratioTrackMatch4Run->Fill(runid,(mEv->GetHeader()->GetNOfPrimaryTracks()==0)?0:(1.*mEv->GetHeader()->GetNOfMatchedTracks()/mEv->GetHeader()->GetNOfPrimaryTracks()));
+		hNPtracks4Run->Fill(runid,mEv->GetHeader()->GetNOfPrimaryTracks());
+		hNGtracks4Run->Fill(runid,mEv->GetHeader()->GetNGlobalTracks());
 		hzdccoinrate4Run->Fill(runid,mEv->GetHeader()->GetZdcCoincidenceRate());
 		hbbccoinrate4Run->Fill(runid,mEv->GetHeader()->GetBbcCoincidenceRate());
 		hbemcNOfTower4Run->Fill(runid,mEv->GetHeader()->GetNOfTowers());
@@ -302,7 +766,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 
 		// Get the Tower trigger the HT event
 		for(int itrg = 0; itrg<mEv->GetHeader()->GetNOfTrigObjs(); itrg ++) {
-			hbemc2d_trig->Fill(mEv->GetTrigObj(itrg)->GetADC(),mEv->GetTrigObj(itrg)->GetId());
+			hbemc2d_trig->Fill(mEv->GetTrigObj(itrg)->GetId(),mEv->GetTrigObj(itrg)->GetADC());
 		}
 
 
@@ -312,11 +776,19 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 			hbemc->Fill(mTwr->GetId(),mTwr->GetEnergy());
 			hbemc2d->Fill(mTwr->GetId(),mTwr->GetEnergy());
 			//cout<<"tower "<<itwr<<"\t"<<mTwr->GetId()<<"\t"<<mTwr->GetADC()<<endl; // test
-			hbemcadcsum4Run->Fill(runid,mTwr->GetEnergy());
+			hbemcenergysum4Run->Fill(runid,mTwr->GetEnergy());
 			hEt4Run->Fill(runid,mTwr->GetEnergy());
+			for(int ia = 0; ia<NTower; ia++) {
+				if((mTwr->GetId())==ArrayTower[ia]) {
+					//hbemcenergy4Run[mTwr->GetId()-1]->Fill(runid,mTwr->GetEnergy());
+					hbemcenergy4Run[ia]->Fill(runid,mTwr->GetEnergy());
+				}
+			}
 		}
 
 		// Primary track loop
+		int counttrkeast[12] = {0};
+		int counttrkwest[12] = {0};
 		int goodtrk = 0;
 		int goodtrktofmatch = 0;
 		int goodtrkbemcmatch = 0;
@@ -325,12 +797,27 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 
 		for (Int_t itrk=0; itrk<mEv->GetHeader()->GetNOfPrimaryTracks(); itrk++) {
 			TStarJetPicoPrimaryTrack *mTrk = mEv->GetPrimaryTrack(itrk); 
+
 			double dca = mTrk->GetDCA();
 			double px = mTrk->GetPx();
 			double py = mTrk->GetPy();
 			double pz = mTrk->GetPz();
 			double pt = sqrt(px*px+py*py+pz*pz);
+			double phi = mTrk->GetPhi();
 			
+			if(pt>PtCut4TPCsec) {
+				if(mTrk->GetEta()<0&&mTrk->GetEta()>-2) { 	// east
+					counttrkeast[convertphi(mTrk->GetPhi())-1]++;		// func convertphi() return int value from 1 to 12
+					//cout<<"East "<<" convertphi("<<mTrk->GetPhi()<<") = "<<convertphi(mTrk->GetPhi())<<endl;
+				}
+				else if(mTrk->GetEta()>0&&mTrk->GetEta()<2) {			// west
+					counttrkwest[convertphi(mTrk->GetPhi())-1]++;
+					//cout<<"West "<<" convertphi("<<mTrk->GetPhi()<<") = "<<convertphi(mTrk->GetPhi())<<endl;
+				}
+			}
+				
+				
+			hphi4Run->Fill(runid,phi);
 			hdca4Run->Fill(runid,dca);
 			hpt4Run->Fill(runid,pt);
 
@@ -353,65 +840,109 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 			hgoodtrk4Run->Fill(runid,goodtrk);
 			hgoodtrkbemcmatch4Run->Fill(runid,goodtrkbemcmatch);
 			hgoodtrktofmatch4Run->Fill(runid,goodtrktofmatch);
+
+			hgoodtrktofmatchVsNOfGlobal->Fill(mEv->GetHeader()->GetNGlobalTracks(),goodtrktofmatch);
+
+
+		for(int is = 0; is<12; is++) {
+			hTpcEastNTrackPerSet4Run[is]->Fill(mEv->GetHeader()->GetRunId(),counttrkeast[is]);
+			hTpcWestNTrackPerSet4Run[is]->Fill(mEv->GetHeader()->GetRunId(),counttrkwest[is]);
+		}
+
+
 		}
 
 	}// End of Evt Loop
 
 // Convert run number into runindex array, so that we don't have gap from not used runnumber in the histogram x
 	vector<int> runindex;
+	vector<int> runindex4map;
 	for(int ir = 0; ir<runrange; ir++) {
 		if(hrunid4Run->GetBinContent(ir+1)>0) {		// valid runnumber
 			runindex.push_back(ir+1);
+			runindex4map.push_back(hrunid4Run->GetBinLowEdge(ir+1));
 		}
 	}
 	int runindexsize = runindex.size();
 	TH1D *hmaprunindex2runid = new TH1D("hmaprunindex2runid","Map runindex to runid",runindexsize,0,runindexsize);
-	for(int idx=0;idx<runindexsize; idx++) {
-		hmaprunindex2runid->SetBinContent(idx+1,runindex.at(idx));
+	for(unsigned int idx=0;idx<runindex4map.size(); idx++) {
+		hmaprunindex2runid->SetBinContent(idx+1,runindex4map.at(idx));
 	}
 	// per run rearranged as runindex (0...number of runs) to avoid the gap from the run number not in use
-	TH1D *hrefmult4runindex = new TH1D("hrefmult4runindex",Form("refmult vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hvx4runindex = new TH1D("hvx4runindex",Form("vx vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hvy4runindex = new TH1D("hvy4runindex",Form("vy vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hvz4runindex = new TH1D("hvz4runindex",Form("vz vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hNPVertex4runindex = new TH1D("hNPVertex4runindex",Form("NumberOfPrimaryVertices vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hratioP2G4runindex = new TH1D("hratioP2G4runindex",Form("NumberOfPrimaryTrack/GlobalTrack vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hratioTrackMatch4runindex = new TH1D("hratioTrackMatch4runindex",Form("NOfMatchedTracks/NOfPTracks vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hzdccoinrate4runindex = new TH1D("hzdccoinrate4runindex",Form("ZDC coincidence Rate vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hbbccoinrate4runindex = new TH1D("hbbccoinrate4runindex",Form("BBC coincidence Rate vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hbemcNOfTower4runindex = new TH1D("hbemcNOfTower4runindex",Form("BEMC Number Of Towers vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hbemcratioNOfTowerMatch4runindex = new TH1D("hbemcratioNOfTowerMatch4runindex",Form("BEMC Number Of Matched Towers/Number Of Towers vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hbemcadcsum4runindex = new TH1D("hbemcadcsum4runindex",Form("BBEMC ADC sum vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hrefmult4runindex = new TProfile("hrefmult4runindex",Form("refmult vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hvx4runindex = new TProfile("hvx4runindex",Form("vx vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hvy4runindex = new TProfile("hvy4runindex",Form("vy vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hvz4runindex = new TProfile("hvz4runindex",Form("vz vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hNPVertex4runindex = new TProfile("hNPVertex4runindex",Form("NumberOfPrimaryVertices vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hDiffVzVpdVz4runindex = new TProfile("hDiffVzVpdVz4runindex",Form("vz-VpdVz vs runindex %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hratioP2G4runindex = new TProfile("hratioP2G4runindex",Form("NumberOfPrimaryTrack/GlobalTrack vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hratioTrackMatch4runindex = new TProfile("hratioTrackMatch4runindex",Form("NOfMatchedTracks/NOfPTracks vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hNPtracks4runindex = new TProfile("hNPtracks4runindex",Form("NumberOfPrimaryTrack vs runindex %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hNGtracks4runindex = new TProfile("hNGtracks4runindex",Form("NumberOfGlobalTrack vs runindex %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hzdccoinrate4runindex = new TProfile("hzdccoinrate4runindex",Form("ZDC coincidence Rate vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hbbccoinrate4runindex = new TProfile("hbbccoinrate4runindex",Form("BBC coincidence Rate vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hbemcNOfTower4runindex = new TProfile("hbemcNOfTower4runindex",Form("BEMC Number Of Towers vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hbemcratioNOfTowerMatch4runindex = new TProfile("hbemcratioNOfTowerMatch4runindex",Form("BEMC Number Of Matched Towers/Number Of Towers vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hbemcenergysum4runindex = new TProfile("hbemcenergysum4runindex",Form("BBEMC energy sum vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hTpcEastNTrackPerSet4runindex[12];
+	for(int is = 0; is<12; is++) {
+ 		hTpcEastNTrackPerSet4runindex[is] = new TProfile(Form("hTpcEastNTrackPerSet4runindex_Sec%d",convertseteast(is+1)),Form("Number of Primary Tracks in TPC section%d pT>%g %s",convertseteast(is+1),PtCut4TPCsec,datadescription),runindexsize,0,runindexsize);
+	}
+	TProfile *hTpcWestNTrackPerSet4runindex[12];
+	for(int is = 0; is<12; is++) {
+ 		hTpcWestNTrackPerSet4runindex[is] = new TProfile(Form("hTpcWestNTrackPerSet4runindex_Sec%d",is+1),Form("Number of Primary Tracks in TPC section%d pT>%g %s",is+1,PtCut4TPCsec,datadescription),runindexsize,0,runindexsize);
+	}
 	
-	TH1D *hgoodtrk4runindex = new TH1D("hgoodtrk4runindex",Form("goodtrk vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hgoodtrkbemcmatch4runindex = new TH1D("hgoodtrkbemcmatch4runindex",Form("goodtrkbemcmatch vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hgoodtrktofmatch4runindex = new TH1D("hgoodtrktofmatch4runindex",Form("goodtrktofmatch vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hgoodtrk4runindex = new TProfile("hgoodtrk4runindex",Form("goodtrk vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hgoodtrkbemcmatch4runindex = new TProfile("hgoodtrkbemcmatch4runindex",Form("goodtrkbemcmatch vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hgoodtrktofmatch4runindex = new TProfile("hgoodtrktofmatch4runindex",Form("goodtrktofmatch vs runid %s",datadescription),runindexsize,0,runindexsize);
 
-	TH1D *hdca4runindex = new TH1D("hdca4runindex",Form("dca vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hpt4runindex = new TH1D("hpt4runindex",Form("pt vs runid %s",datadescription),runindexsize,0,runindexsize);
-	TH1D *hEt4runindex = new TH1D("hEt4runindex",Form("Et vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hphi4runindex = new TProfile("hphi4runindex",Form("phi vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hdca4runindex = new TProfile("hdca4runindex",Form("dca vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hpt4runindex = new TProfile("hpt4runindex",Form("pt vs runid %s",datadescription),runindexsize,0,runindexsize);
+	TProfile *hEt4runindex = new TProfile("hEt4runindex",Form("Et vs runid %s",datadescription),runindexsize,0,runindexsize);
 
+
+	TProfile *hbemcenergy4runindex[NTower];
+	for(int i = 0; i<NTower; i++) {
+		hbemcenergy4runindex[i] = new TProfile(Form("hbemcenergy4runindex_Tower%d",ArrayTower[i]),Form("BEMC Tower %d energy vs runindex %s",i+1,datadescription),runindexsize,0,runindexsize);
+	}
+	
 	convertrunindex(runindex,hrefmult4Run,hrefmult4runindex);
 	convertrunindex(runindex,hvx4Run,hvx4runindex);
 	convertrunindex(runindex,hvy4Run,hvy4runindex);
 	convertrunindex(runindex,hvz4Run,hvz4runindex);
+	convertrunindex(runindex,hDiffVzVpdVz4Run,hDiffVzVpdVz4runindex);
 	convertrunindex(runindex,hNPVertex4Run,hNPVertex4runindex);
 	convertrunindex(runindex,hratioP2G4Run,hratioP2G4runindex);
+	convertrunindex(runindex,hNPtracks4Run,hNPtracks4runindex);
+	convertrunindex(runindex,hNGtracks4Run,hNGtracks4runindex);
 	convertrunindex(runindex,hratioTrackMatch4Run,hratioTrackMatch4runindex);
 	convertrunindex(runindex,hzdccoinrate4Run,hzdccoinrate4runindex);
 	convertrunindex(runindex,hbbccoinrate4Run,hbbccoinrate4runindex);
+	for(int is = 0; is<12; is++) {
+		convertrunindex(runindex,hTpcEastNTrackPerSet4Run[is],hTpcEastNTrackPerSet4runindex[is]);
+	}
+	for(int is = 0; is<12; is++) {
+		convertrunindex(runindex,hTpcWestNTrackPerSet4Run[is],hTpcWestNTrackPerSet4runindex[is]);
+	}
 	convertrunindex(runindex,hbemcNOfTower4Run,hbemcNOfTower4runindex);
 	convertrunindex(runindex,hbemcratioNOfTowerMatch4Run,hbemcratioNOfTowerMatch4runindex);
-	convertrunindex(runindex,hbemcadcsum4Run,hbemcadcsum4runindex);
+	convertrunindex(runindex,hbemcenergysum4Run,hbemcenergysum4runindex);
 
 	convertrunindex(runindex,hgoodtrk4Run,hgoodtrk4runindex);
 	convertrunindex(runindex,hgoodtrkbemcmatch4Run,hgoodtrkbemcmatch4runindex);
 	convertrunindex(runindex,hgoodtrktofmatch4Run,hgoodtrktofmatch4runindex);
 
+	convertrunindex(runindex,hphi4Run,hphi4runindex);
 	convertrunindex(runindex,hdca4Run,hdca4runindex);
 	convertrunindex(runindex,hpt4Run,hpt4runindex);
 	convertrunindex(runindex,hEt4Run,hEt4runindex);
 
+
+	for(int i = 0; i<NTower; i++) {
+		convertrunindex(runindex,hbemcenergy4Run[i],hbemcenergy4runindex[i]);
+	}
 // Write out hot tower id into txt file
 	ofstream ftxt;
 	ftxt.open(Form("list4BEMCTowerHits_%s.txt",tag_trig));
@@ -460,7 +991,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 	c->Clear();
 	TH2D *hbemc2d_notrig = (TH2D*)hbemc2d->Clone("hbemc2d_notrig");
 	hbemc2d_notrig->Add(hbemc2d_trig,-1);
-	hbemc2d_notrig->SetTitle(Form("Non-triggered BEMC Tower ADC for all run %s",datadescription));
+	hbemc2d_notrig->SetTitle(Form("Non-triggered BEMC Tower energy for all run %s",datadescription));
 	hbemc2d_notrig->Draw("col");
 	l->DrawLine(1,bemcave+times*bemcsigma,4801,bemcave+times*bemcsigma);
 	l->DrawLine(1,bemcave-times*bemcsigma,4801,bemcave-times*bemcsigma);
@@ -470,13 +1001,13 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 // Search for abnormal run
 	//vector<int> refmultlist, vxlist, vylist, vzlist, ratioP2Glist, ratioTrackMatchlist, bemcratioNOfTowerMatchlist; 
 	list<int> refmultlist, vxlist, vylist, vzlist, ratioP2Glist, ratioTrackMatchlist, bemcratioNOfTowerMatchlist; 
-	BadRun(hrefmult4runindex,hmaprunindex2runid,refmultlist,tag_trig,outdir);
-	BadRun(hvx4runindex,hmaprunindex2runid,vxlist,tag_trig,outdir);
-	BadRun(hvy4runindex,hmaprunindex2runid,vylist,tag_trig,outdir);
-	BadRun(hvz4runindex,hmaprunindex2runid,vzlist,tag_trig,outdir);
-	BadRun(hratioP2G4runindex,hmaprunindex2runid,ratioP2Glist,tag_trig,outdir);
-	BadRun(hratioTrackMatch4runindex,hmaprunindex2runid,ratioTrackMatchlist,tag_trig,outdir);
-	BadRun(hbemcratioNOfTowerMatch4runindex,hmaprunindex2runid,bemcratioNOfTowerMatchlist,tag_trig,outdir);
+	BadRun(hrefmult4runindex,hmaprunindex2runid,refmultlist,tag_trig,outfiletag,outdir);
+	BadRun(hvx4runindex,hmaprunindex2runid,vxlist,tag_trig,outfiletag,outdir);
+	BadRun(hvy4runindex,hmaprunindex2runid,vylist,tag_trig,outfiletag,outdir);
+	BadRun(hvz4runindex,hmaprunindex2runid,vzlist,tag_trig,outfiletag,outdir);
+	BadRun(hratioP2G4runindex,hmaprunindex2runid,ratioP2Glist,tag_trig,outfiletag,outdir);
+	BadRun(hratioTrackMatch4runindex,hmaprunindex2runid,ratioTrackMatchlist,tag_trig,outfiletag,outdir);
+	BadRun(hbemcratioNOfTowerMatch4runindex,hmaprunindex2runid,bemcratioNOfTowerMatchlist,tag_trig,outfiletag,outdir);
 // Merge bad run list from all variables
 	//vector<int> badrunlist;
 	list<int> badrunlist;
@@ -500,9 +1031,15 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 	//TFile *fout = new TFile(Form("%s%s_%d.root",outdir,tag_trig,fileid),"RECREATE");
 	TFile *fout = new TFile(Form("%s%s.root",outdir,tag_trig),"RECREATE");
 	fout->cd();
+	hrunid4Run->Write();
 	hmaprunindex2runid->Write();
 	hvz->Write();
 	hvxy->Write();
+	hzdc->Write();
+	hbbc->Write();
+	hBbcVsZdc->Write();
+	hNOfGlobalVsZdc->Write();
+	hgoodtrktofmatchVsNOfGlobal->Write();
 	hbemc->Write();
 	hbemc2d->Write();
 	hbemc2d_trig->Write();
@@ -510,19 +1047,27 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 	hvx4Run->Write();
 	hvy4Run->Write();
 	hvz4Run->Write();
+	hDiffVzVpdVz4Run->Write();
 	hNPVertex4Run->Write();
 	hratioP2G4Run->Write();
+	hNPtracks4Run->Write();
+	hNGtracks4Run->Write();
 	hratioTrackMatch4Run->Write();
 	hzdccoinrate4Run->Write();
 	hbbccoinrate4Run->Write();
+	for(int is = 0; is<12; is++) {
+		hTpcEastNTrackPerSet4Run[is]->Write();
+		hTpcWestNTrackPerSet4Run[is]->Write();
+	}
 	hbemcNOfTower4Run->Write();
 	hbemcratioNOfTowerMatch4Run->Write();
-	hbemcadcsum4Run->Write();
+	hbemcenergysum4Run->Write();
 
 	hgoodtrk4Run->Write();
 	hgoodtrkbemcmatch4Run->Write();
 	hgoodtrktofmatch4Run->Write();
 
+	hphi4Run->Write();
 	hdca4Run->Write();
 	hpt4Run->Write();
 	hEt4Run->Write();	
@@ -531,23 +1076,37 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root") {
 	hvx4runindex->Write();
 	hvy4runindex->Write();
 	hvz4runindex->Write();
+	hDiffVzVpdVz4runindex->Write();
 	hNPVertex4runindex->Write();
 	hratioP2G4runindex->Write();
+	hNPtracks4runindex->Write();
+	hNGtracks4runindex->Write();
 	hratioTrackMatch4runindex->Write();
 	hzdccoinrate4runindex->Write();
 	hbbccoinrate4runindex->Write();
+	for(int is = 0; is<12; is++) {
+		hTpcEastNTrackPerSet4runindex[is]->Write();
+		hTpcWestNTrackPerSet4runindex[is]->Write();
+	}
 	hbemcNOfTower4runindex->Write();
 	hbemcratioNOfTowerMatch4runindex->Write();
-	hbemcadcsum4runindex->Write();
+	hbemcenergysum4runindex->Write();
 
 	hgoodtrk4runindex->Write();
 	hgoodtrkbemcmatch4runindex->Write();
 	hgoodtrktofmatch4runindex->Write();
 
+	hphi4runindex->Write();
 	hdca4runindex->Write();
 	hpt4runindex->Write();
 	hEt4runindex->Write();	
 
+	fout->mkdir("PerTowerBEMCAdc");
+	fout->cd("PerTowerBEMCAdc");
+	for(int i = 0;i<NTower;i++) {
+		hbemcenergy4Run[i]->Write();
+		hbemcenergy4runindex[i]->Write();
+	}
 
 	fout->Close();
 

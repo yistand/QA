@@ -591,7 +591,7 @@ void MergeBadRunList(list<int>& a, list<int>& b) {		// merge b into a in order, 
 //void TimeDep(TString fin="/home/ly247/code/BEMCHTFinder/AuAu200Run11NPE18Central.list") {
 //void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/sum*.root",TString outfiletag="",const char *tag_trig="MB") {
 //void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoMB_sum*.root",TString outfiletag="",const char *tag_trig="MB") {
-void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJP2_sum*.root",TString outfiletag="",const char *tag_trig="JP2") {
+void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJP2_151030_P12id_sum*.root",TString outfiletag="",const char *tag_trig="JP2") {
 //void TimeDep(int fileid = 0) {
 //	gSystem->Load("libPhysics");		// needed to TLorentVector
 //	gSystem->Load("libHist");		// needed to TLorentVector
@@ -701,6 +701,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJ
 	
 	// all run
 	TH1D *hvz = new TH1D("hvz",Form("Vz for all run %s",datadescription),1000,-100,100);
+	TH1D *hdiffvz = new TH1D("hdiffvz",Form("vz-VpdVz for all run %s",datadescription),2000,-1000,1000);
 	TH2D *hvxy = new TH2D("hvxy",Form("Vx - Vy for all run %s",datadescription),1000,-4,4,1000,-4,4);
 	TH1D *hzdc = new TH1D("hzdc",Form("Zdc Coin. Rate for all run %s",datadescription),1000,0,20000);
 	TH1D *hbbc = new TH1D("hbbc",Form("Bbc Coin. Rate for all run %s",datadescription),1000,0,1500000);
@@ -742,6 +743,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJ
 		// Event information
 		int runid = mEv->GetHeader()->GetRunId();
 		hvz->Fill(mEv->GetHeader()->GetPrimaryVertexZ());
+		hdiffvz->Fill(mEv->GetHeader()->GetPrimaryVertexZ()-mEv->GetHeader()->GetVpdVz());
 		hvxy->Fill(mEv->GetHeader()->GetPrimaryVertexX(),mEv->GetHeader()->GetPrimaryVertexY());
 		hzdc->Fill(mEv->GetHeader()->GetZdcCoincidenceRate());
 		hBbcVsZdc->Fill(mEv->GetHeader()->GetZdcCoincidenceRate(),mEv->GetHeader()->GetBbcCoincidenceRate());
@@ -753,6 +755,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJ
 		hvx4Run->Fill(runid,mEv->GetHeader()->GetPrimaryVertexX());
 		hvy4Run->Fill(runid,mEv->GetHeader()->GetPrimaryVertexY());
 		hvz4Run->Fill(runid,mEv->GetHeader()->GetPrimaryVertexZ());
+		hDiffVzVpdVz4Run->Fill(runid,mEv->GetHeader()->GetPrimaryVertexZ()-mEv->GetHeader()->GetVpdVz());
 		hNPVertex4Run->Fill(runid,mEv->GetHeader()->GetNumberOfVertices());
 		hratioP2G4Run->Fill(runid,(mEv->GetHeader()->GetNGlobalTracks()==0)?0:(1.*mEv->GetHeader()->GetNOfPrimaryTracks()/mEv->GetHeader()->GetNGlobalTracks()));
 		hratioTrackMatch4Run->Fill(runid,(mEv->GetHeader()->GetNOfPrimaryTracks()==0)?0:(1.*mEv->GetHeader()->GetNOfMatchedTracks()/mEv->GetHeader()->GetNOfPrimaryTracks()));
@@ -1034,6 +1037,7 @@ void TimeDep(TString fin="/home/fas/caines/ly247/scratch/run12ppQA/pp200Y12PicoJ
 	hrunid4Run->Write();
 	hmaprunindex2runid->Write();
 	hvz->Write();
+	hdiffvz->Write();
 	hvxy->Write();
 	hzdc->Write();
 	hbbc->Write();

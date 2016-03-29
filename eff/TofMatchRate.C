@@ -28,17 +28,29 @@ void TofMatchRate() {
 	double ptmax = 10;
 	double ptmin = 0.15;
 	int ptbins = 100; 
+
+	double etamax = 1;
+	double etamin = -1;
+	int etabins = 100; 
+
 	int Ntrkmax = 100;
 
 	const int NoZdc = 10;
 	int ZdcCut[NoZdc+1] = {0,1000,2000,3000,4000,5000,6000,7000,8000,10000,50000};
 	TH1D *htpc[NoZdc];
 	TH1D *htof[NoZdc];
+	TH1D *htpcVseta[NoZdc];
+	TH1D *htofVseta[NoZdc];
 	for(int i = 0; i<NoZdc; i++) {
 		htpc[i] = new TH1D(Form("htpc%d",i), Form("Number of TPC tracks vs pt for %d<zdc<%d",ZdcCut[i],ZdcCut[i+1]),ptbins,ptmin,ptmax);
 		htof[i] = new TH1D(Form("htof%d",i), Form("Number of TOF tracks vs pt for %d<zdc<%d",ZdcCut[i],ZdcCut[i+1]),ptbins,ptmin,ptmax);
 		htpc[i]->Sumw2();
 		htof[i]->Sumw2();
+
+		htpcVseta[i] = new TH1D(Form("htpcVseta%d",i), Form("Number of TPC tracks vs #eta for %d<zdc<%d",ZdcCut[i],ZdcCut[i+1]),etabins,etamin,etamax);
+		htofVseta[i] = new TH1D(Form("htofVseta%d",i), Form("Number of TOF tracks vs #eta for %d<zdc<%d",ZdcCut[i],ZdcCut[i+1]),etabins,etamin,etamax);
+		htpcVseta[i]->Sumw2();
+		htofVseta[i]->Sumw2();
 	}
 
 	for(int ievt = 0 ; ievt<chain->GetEntries() ; ievt++) {
@@ -59,7 +71,7 @@ void TofMatchRate() {
 
 		int zdc = 0;
 		while(t->fEventHeader_fZdcCoincidenceRate>ZdcCut[zdc]) zdc++;
-		if(zdc>NoZdc) zdc = NoZdc-1;
+		if(zdc>=NoZdc) zdc = NoZdc-1;
 
 		for(int j = 0; j<t->fPrimaryTracks_; j++) {
 
@@ -71,13 +83,16 @@ void TofMatchRate() {
 			
 
 			if((t->fPrimaryTracks_fFlag[j]<=0)) continue;
-			if(fabs(ieta)>0.5) continue;			
 			if(ipt<ptmin && ipt>ptmax ) continue;
 			if(idca>1) continue;
 			if(t->fPrimaryTracks_fNFittedHits[j]<25) continue;
 			if(1.*t->fPrimaryTracks_fNFittedHits[j]/t->fPrimaryTracks_fNHitsPoss[j]<0.52) continue;
 			if(1.*t->fPrimaryTracks_fNFittedHits[j]/t->fPrimaryTracks_fNHitsPoss[j]>1.02) continue;
 
+			htpcVseta[zdc]->Fill(ieta);
+			if(t->fPrimaryTracks_fTofMatchFlag[j]>0) htofVseta[zdc]->Fill(ieta);
+
+			if(fabs(ieta)>0.5) continue;			
 			htpc[zdc]->Fill(ipt);
 			if(t->fPrimaryTracks_fTofMatchFlag[j]>0) htof[zdc]->Fill(ipt);
 
@@ -85,9 +100,12 @@ void TofMatchRate() {
 	}
 
 	TH1D *hr[NoZdc];
+	TH1D *hrVseta[NoZdc];
 	for(int i = 0; i<NoZdc; i++) {
 		hr[i] = (TH1D*)htof[i]->Clone(Form("hr%d",i));
 		hr[i]->Divide(htpc[i]);
+		hrVseta[i] = (TH1D*)htofVseta[i]->Clone(Form("hrVseta%d",i));
+		hrVseta[i]->Divide(htpcVseta[i]);
 	}
 
 	TFile *fout = new TFile("ppTOFeff.root","recreate");
@@ -95,6 +113,9 @@ void TofMatchRate() {
 		htpc[i]->Write();
 		htof[i]->Write();
 		hr[i]->Write();
+		htpcVseta[i]->Write();
+		htofVseta[i]->Write();
+		hrVseta[i]->Write();
 	}
 	fout->Close();
 
